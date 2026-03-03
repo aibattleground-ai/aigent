@@ -1,6 +1,6 @@
 /**
- * NexusSphere - Telegraf Bot
- * Handles incoming messages, routes to LLM, and triggers mock execution.
+ * AIGENT - Telegraf Bot
+ * Handles incoming messages, routes to Claude AI, and triggers mock execution.
  */
 import { Telegraf } from 'telegraf';
 import { parseIntent } from './llm.js';
@@ -12,11 +12,11 @@ import { executeMockTrade } from './executor.js';
 export function startBot() {
     const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-    // ── /start command ─────────────────────────────────────────────────────────
+    // ── /start command ────────────────────────────────────────────────────────
     bot.command('start', (ctx) => {
         const name = ctx.from.first_name || 'Trader';
         ctx.reply(
-            `👋 Welcome to *NexusSphere*, ${name}!\n\n` +
+            `👋 Welcome to *AIGENT*, ${name}!\n\n` +
             `I'm your AI-powered crypto trading agent. Tell me what you want to do in plain English.\n\n` +
             `*Examples:*\n` +
             `• "Buy $100 of ETH if it drops 5%"\n` +
@@ -27,11 +27,11 @@ export function startBot() {
         );
     });
 
-    // ── /help command ──────────────────────────────────────────────────────────
+    // ── /help command ─────────────────────────────────────────────────────────
     bot.command('help', (ctx) => {
         ctx.reply(
-            `📖 *NexusSphere Help*\n\n` +
-            `Simply describe your trade in natural language. I'll parse your intent and configure a mock trade agent.\n\n` +
+            `📖 *AIGENT Help*\n\n` +
+            `Simply describe your trade in natural language. I'll parse your intent using Claude AI and configure a mock trade agent.\n\n` +
             `*Supported actions:* buy / sell\n` +
             `*Supported assets:* BTC, ETH, SOL, and more\n\n` +
             `*Commands:*\n` +
@@ -65,14 +65,12 @@ export function startBot() {
     bot.on('text', async (ctx) => {
         const userText = ctx.message.text;
 
-        // Let user know we're processing
-        const thinkingMsg = await ctx.reply('🧠 Analyzing your intent...');
+        const thinkingMsg = await ctx.reply('🧠 Claude AI is analyzing your intent...');
 
         try {
-            // Step 1: Parse intent via LLM
+            // Step 1: Parse intent via Claude AI
             const intent = await parseIntent(userText);
 
-            // Handle LLM error response
             if (intent.error) {
                 await ctx.telegram.deleteMessage(ctx.chat.id, thinkingMsg.message_id).catch(() => { });
                 return ctx.reply(
@@ -81,12 +79,11 @@ export function startBot() {
                 );
             }
 
-            // Validate required fields
             const { action, asset, amount, condition } = intent;
             if (!action || !asset || !amount || !condition) {
                 await ctx.telegram.deleteMessage(ctx.chat.id, thinkingMsg.message_id).catch(() => { });
                 return ctx.reply(
-                    `⚠️ *Incomplete Intent Detected.*\n\nI need all of: action, asset, amount, and condition.\n\nExample: "Buy $100 of ETH if it drops 5%"`,
+                    `⚠️ *Incomplete Intent Detected.*\n\nI need: action, asset, amount, and condition.\n\nExample: "Buy $100 of ETH if it drops 5%"`,
                     { parse_mode: 'Markdown' }
                 );
             }
@@ -94,16 +91,15 @@ export function startBot() {
             // Step 2: Execute mock trade
             const { tradeId, summary } = executeMockTrade(String(ctx.chat.id), intent);
 
-            // Delete the "thinking" placeholder message
             await ctx.telegram.deleteMessage(ctx.chat.id, thinkingMsg.message_id).catch(() => { });
 
             // Step 3: Reply with confirmation
             await ctx.reply(
-                `✅ *NexusSphere Agent Configured!*\n\n` +
-                `🤖 *Parsed Intent:*\n` +
+                `✅ *AIGENT Configured!*\n\n` +
+                `🤖 *Parsed Intent (Claude AI):*\n` +
                 `\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n\n` +
                 `🚀 *Mock Trade Executed:*\n${summary}\n\n` +
-                `_Your agent is now monitoring the market. Use /history to view all trades._`,
+                `_Use /history to view all trades._`,
                 { parse_mode: 'Markdown' }
             );
         } catch (err) {
@@ -113,14 +109,10 @@ export function startBot() {
         }
     });
 
-    // ── Launch ─────────────────────────────────────────────────────────────────
-    bot.launch({
-        dropPendingUpdates: true,
-    });
+    // ── Launch ────────────────────────────────────────────────────────────────
+    bot.launch({ dropPendingUpdates: true });
+    console.log('🤖 AIGENT Telegram bot started successfully.');
 
-    console.log('🤖 Telegram bot started successfully.');
-
-    // Graceful shutdown
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }

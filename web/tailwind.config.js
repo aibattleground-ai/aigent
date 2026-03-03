@@ -7,34 +7,31 @@ module.exports = {
     theme: {
         extend: {
             colors: {
-                'neon-cyan': '#00f5ff',
-                'neon-purple': '#bf00ff',
-                'dark-bg': '#0a0a0f',
-                'dark-card': '#111128',
-                'dark-border': '#1e1e3a',
+                'ai-cyan': '#00f0ff',
+                'ai-purple': '#a855f7',
+                'ai-pink': '#f059da',
+                'ai-bg': '#04040a',
+                'ai-card': '#0b0b14',
+                'ai-border': 'rgba(255,255,255,0.07)',
             },
             fontFamily: {
-                sans: ['var(--font-inter)', 'system-ui', 'sans-serif'],
-                mono: ['var(--font-mono)', 'monospace'],
+                sans: ['Space Grotesk', 'system-ui', 'sans-serif'],
+                display: ['Syne', 'system-ui', 'sans-serif'],
+                mono: ['JetBrains Mono', 'monospace'],
+            },
+            animation: {
+                'float': 'float 8s ease-in-out infinite',
+                'spin-slow': 'spin-slow 20s linear infinite',
+                'spin-slower': 'spin-slow 30s linear infinite reverse',
+                'pulse-ring': 'pulse-ring 2s ease-out infinite',
+                'shimmer': 'shimmer 3s linear infinite',
+                'slide-up': 'slide-up 0.6s ease-out forwards',
+                'orb-pulse': 'orb-pulse 4s ease-in-out infinite',
+                'grid-move': 'grid-move 8s linear infinite',
             },
             backgroundImage: {
                 'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-                'hero-gradient': 'linear-gradient(135deg, #0a0a0f 0%, #0d0d2b 50%, #0a0a0f 100%)',
-            },
-            animation: {
-                'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                'float': 'float 6s ease-in-out infinite',
-                'glow': 'glow 2s ease-in-out infinite alternate',
-            },
-            keyframes: {
-                float: {
-                    '0%, 100%': { transform: 'translateY(0)' },
-                    '50%': { transform: 'translateY(-10px)' },
-                },
-                glow: {
-                    '0%': { textShadow: '0 0 5px #00f5ff, 0 0 10px #00f5ff' },
-                    '100%': { textShadow: '0 0 20px #00f5ff, 0 0 40px #00f5ff, 0 0 80px #00f5ff' },
-                },
+                'gradient-conic': 'conic-gradient(var(--tw-gradient-stops))',
             },
         },
     },

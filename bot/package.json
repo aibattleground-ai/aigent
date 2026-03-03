@@ -1,7 +1,7 @@
 {
-    "name": "nexussphere-bot",
+    "name": "aigent-bot",
     "version": "1.0.0",
-    "description": "NexusSphere Telegram Bot with AI Intent Engine",
+    "description": "AIGENT Telegram Bot with Claude AI Intent Engine",
     "main": "src/index.js",
     "type": "module",
     "scripts": {
@@ -9,9 +9,9 @@
         "dev": "node --watch src/index.js"
     },
     "dependencies": {
-        "telegraf": "^4.15.6",
-        "openai": "^4.40.0",
+        "@anthropic-ai/sdk": "^0.78.0",
+        "dotenv": "^16.4.5",
         "node-sqlite3-wasm": "^0.8.53",
-        "dotenv": "^16.4.5"
+        "telegraf": "^4.15.6"
     }
 }

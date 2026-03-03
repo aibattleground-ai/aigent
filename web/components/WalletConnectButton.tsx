@@ -1,86 +1,45 @@
 'use client';
-
-/**
- * NexusSphere - Connect Wallet Button
- * Thin wrapper around RainbowKit's ConnectButton with custom styling.
- */
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 export function WalletConnectButton() {
     return (
         <ConnectButton.Custom>
-            {({
-                account,
-                chain,
-                openAccountModal,
-                openChainModal,
-                openConnectModal,
-                authenticationStatus,
-                mounted,
-            }) => {
+            {({ account, chain, openAccountModal, openChainModal, openConnectModal, authenticationStatus, mounted }) => {
                 const ready = mounted && authenticationStatus !== 'loading';
-                const connected =
-                    ready &&
-                    account &&
-                    chain &&
-                    (!authenticationStatus || authenticationStatus === 'authenticated');
+                const connected = ready && account && chain && (!authenticationStatus || authenticationStatus === 'authenticated');
 
                 return (
-                    <div
-                        {...(!ready && {
-                            'aria-hidden': true,
-                            style: { opacity: 0, pointerEvents: 'none', userSelect: 'none' },
-                        })}
-                    >
-                        {(() => {
-                            if (!connected) {
-                                return (
-                                    <button
-                                        onClick={openConnectModal}
-                                        className="px-6 py-3 rounded-lg font-semibold text-sm border border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-dark-bg transition-all duration-300 border-glow-cyan"
-                                    >
-                                        Connect Wallet
-                                    </button>
-                                );
-                            }
-
-                            if (chain.unsupported) {
-                                return (
-                                    <button
-                                        onClick={openChainModal}
-                                        className="px-6 py-3 rounded-lg font-semibold text-sm border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-all duration-300"
-                                    >
-                                        Wrong Network
-                                    </button>
-                                );
-                            }
-
-                            return (
-                                <div className="flex items-center gap-3">
-                                    <button
-                                        onClick={openChainModal}
-                                        className="px-4 py-2 rounded-lg text-xs font-medium border border-dark-border text-slate-400 hover:border-neon-cyan hover:text-neon-cyan transition-all duration-300"
-                                    >
-                                        {chain.hasIcon && chain.iconUrl && (
-                                            <img
-                                                alt={chain.name ?? 'Chain icon'}
-                                                src={chain.iconUrl}
-                                                className="w-4 h-4 inline mr-1"
-                                            />
-                                        )}
-                                        {chain.name}
-                                    </button>
-
-                                    <button
-                                        onClick={openAccountModal}
-                                        className="px-6 py-2 rounded-lg text-sm font-semibold border border-neon-cyan text-neon-cyan hover:bg-neon-cyan hover:text-dark-bg transition-all duration-300"
-                                    >
-                                        {account.displayName}
-                                        {account.displayBalance ? ` (${account.displayBalance})` : ''}
-                                    </button>
-                                </div>
-                            );
-                        })()}
+                    <div {...(!ready && { 'aria-hidden': true, style: { opacity: 0, pointerEvents: 'none', userSelect: 'none' } })}>
+                        {!connected ? (
+                            <button
+                                onClick={openConnectModal}
+                                className="btn-shimmer px-5 py-2.5 rounded-full text-sm font-semibold text-ai-bg tracking-wide"
+                            >
+                                Connect Wallet
+                            </button>
+                        ) : chain?.unsupported ? (
+                            <button
+                                onClick={openChainModal}
+                                className="px-5 py-2.5 rounded-full text-sm font-semibold border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-all"
+                            >
+                                Wrong Network
+                            </button>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={openChainModal}
+                                    className="px-3 py-2 rounded-full text-xs font-medium glass text-white/60 hover:text-white transition-all"
+                                >
+                                    {chain?.name}
+                                </button>
+                                <button
+                                    onClick={openAccountModal}
+                                    className="px-4 py-2 rounded-full text-sm font-semibold glass border border-ai-cyan/20 text-ai-cyan hover:border-ai-cyan/50 transition-all"
+                                >
+                                    {account.displayName}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 );
             }}

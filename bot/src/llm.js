@@ -1,18 +1,18 @@
 /**
- * NexusSphere - LLM Intent Parser
- * Uses OpenAI to extract structured trading intents from natural language.
+ * AIGENT - Claude AI Intent Parser
+ * Uses Anthropic Claude to extract structured trading intents from natural language.
  */
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+const client = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
 /**
- * System prompt instructing the LLM to act as a financial intent parser.
- * It must return ONLY valid JSON — no explanations, no markdown.
+ * System prompt instructing Claude to act as a financial intent parser.
+ * Returns ONLY valid JSON — no explanations, no markdown.
  */
-const SYSTEM_PROMPT = `You are a financial intent parser for a crypto trading agent called NexusSphere.
+const SYSTEM_PROMPT = `You are a financial intent parser for a crypto trading agent called AIGENT.
 Your job is to extract structured trading parameters from natural language.
 
 Extract the following fields:
@@ -34,23 +34,22 @@ Example output: {"action":"buy","asset":"ETH","amount":100,"condition":"price dr
  */
 export async function parseIntent(userMessage) {
     try {
-        const response = await openai.chat.completions.create({
-            model: process.env.OPENAI_MODEL || 'gpt-4o',
+        const message = await client.messages.create({
+            model: process.env.CLAUDE_MODEL || 'claude-3-5-sonnet-20241022',
+            max_tokens: 256,
+            system: SYSTEM_PROMPT,
             messages: [
-                { role: 'system', content: SYSTEM_PROMPT },
                 { role: 'user', content: userMessage },
             ],
-            temperature: 0, // deterministic output
-            max_tokens: 256,
         });
 
-        const raw = response.choices[0].message.content.trim();
+        const raw = message.content[0].text.trim();
 
         // Safely parse the JSON response
         const parsed = JSON.parse(raw);
         return parsed;
     } catch (err) {
         console.error('[LLM] Error parsing intent:', err.message);
-        return { error: 'LLM parsing failed. Please try again.' };
+        return { error: 'Claude parsing failed. Please try again.' };
     }
 }
