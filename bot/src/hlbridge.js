@@ -39,34 +39,43 @@ const BRIDGE_ABI = [
     'function deposit(uint64 amount) external',
 ];
 
-// Fast, reliable public RPCs for signing — no Cloudflare block on POST+signed-tx
+// RPCs in priority order (official first, no Alchemy demo — avoids 429)
 const RPC_LIST = [
-    'https://arb-mainnet.g.alchemy.com/v2/demo',
-    'https://1rpc.io/arb',
+    'https://arb1.arbitrum.io/rpc',
     'https://arbitrum.llamarpc.com',
+    'https://1rpc.io/arb',
 ];
-
-// How much ETH gas reserve to keep in wallet (for the 2 transactions: approve + deposit)
-// ~0.0003 ETH is plenty for both txs on Arbitrum at 0.1 gwei
-const GAS_RESERVE_ETH = 0.0003;
-
-// Minimum deposit amount (< $1 is dust, refuse)
-const MIN_DEPOSIT_USDC = 1.0;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-/** Returns a JsonRpcProvider from the first working RPC in the list */
+/**
+ * Returns a working JsonRpcProvider, trying each RPC in sequence.
+ * Catches 429 (rate-limit) explicitly and moves to the next endpoint.
+ */
 async function getProvider() {
     for (const url of RPC_LIST) {
         try {
             const provider = new ethers.providers.JsonRpcProvider(url);
-            await provider.getBlockNumber(); // verify connection
+            // 5s timeout on the connectivity check itself
+            await Promise.race([
+                provider.getBlockNumber(),
+                new Promise((_, rej) =>
+                    setTimeout(() => rej(new Error('connect timeout')), 5_000)
+                ),
+            ]);
             return provider;
-        } catch {
-            // try next
+        } catch (err) {
+            const msg = err?.message ?? '';
+            const is429 = msg.includes('429') || msg.includes('rate') || msg.includes('Too Many');
+            console.warn(`[HLBRIDGE] RPC ${url} failed${is429 ? ' (429)' : ''}: ${msg}`);
+            // continue to next RPC
         }
     }
-    throw new Error('All Arbitrum RPCs are unreachable. Check network.');
+    throw new Error(
+        '❌ 네트워크 지연 발생\n\n' +
+        '블록체인 네트워크 혼잡으로 잔고를 확인할 수 없습니다.\n' +
+        '잠시 후 다시 시도해 주세요.'
+    );
 }
 
 /** Formats USDC raw BigNumber to a readable string */
@@ -116,9 +125,8 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
         };
     }
 
-    // ── Step 1.5: Pre-flight ETH gas check ────────────────────────────────────
-    // Arbitrum txs are cheap (~0.0001 ETH per tx), but if the wallet has zero
-    // native ETH the transaction will hang forever. Fail fast with a clear message.
+    // ── Step 1.5: Pre-flight ETH gas check (ABORT on failure) ────────────────
+    // If this fails we MUST abort — proceeding with 0 ETH hangs the tx forever.
     onProgress('⛽ Checking gas (ETH) balance...');
 
     try {
@@ -127,23 +135,28 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
             new Promise((_, rej) => setTimeout(() => rej(new Error('ETH balance check timeout')), 5_000)),
         ]);
         const ethBalance = Number(ethers.utils.formatEther(ethRaw));
+        const MIN_GAS_ETH = 0.00015; // ~2 txs on Arbitrum at normal gas
 
-        // Need at least ~0.00015 ETH for 2 txs on Arbitrum (approve + deposit)
-        const MIN_GAS_ETH = 0.00015;
         if (ethBalance < MIN_GAS_ETH) {
             return {
                 success: false,
                 error:
-                    `❌ 가스비(ETH) 부족!\n\n` +
+                    `⛽ 가스비(ETH) 부족\n\n` +
                     `송금을 위한 네트워크 수수료가 없습니다.\n` +
                     `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.\n\n` +
                     `_(현재 ETH 잔고: ${ethBalance.toFixed(6)} ETH)_`,
             };
         }
     } catch (err) {
-        // ETH check itself failed — warn but don't block (node might be flaky)
-        console.warn('[HLBRIDGE] ETH balance check failed:', err.message);
-        onProgress('⚠️ Could not verify ETH gas — proceeding with caution...');
+        // 429, timeout, or any network error — ABORT immediately, don't proceed
+        console.error('[HLBRIDGE] ETH balance check ABORTED:', err.message);
+        return {
+            success: false,
+            error:
+                `❌ 네트워크 지연 발생\n\n` +
+                `블록체인 네트워크 혼잡으로 잔고를 확인할 수 없습니다.\n` +
+                `잠시 후 다시 시도해 주세요.`,
+        };
     }
 
     const depositAmt = amountUsdc ? Math.min(amountUsdc, usdcBalance) : usdcBalance;

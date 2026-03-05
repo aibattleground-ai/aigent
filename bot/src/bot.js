@@ -15,8 +15,9 @@ import { depositToHyperliquid } from './hlbridge.js';
 import { startPositionMonitor, stopPositionMonitor, hasActiveMonitor } from './monitor.js';
 
 // ── In-memory state ────────────────────────────────────────────────────────────
-const gridSessions = new Map();    // chatId → { asset, stats }
+const gridSessions = new Map();   // chatId → { asset, stats }
 const exportConfirm = new Set();   // chatIds awaiting key export confirmation
+const depositPending = new Map();   // chatId → { usdcBalance, promptMsgId }
 
 // ── UI Keyboards ───────────────────────────────────────────────────────────────
 
@@ -229,15 +230,97 @@ export async function startBot() {
         }
     });
 
-    // ── 📥 Deposit → Hyperliquid ──────────────────────────────────────────────
+    // ── 📥 Deposit → Hyperliquid (Interactive Prompt) ─────────────────────────────
+
+    /**
+     * Step 1: Shows balance + 25/50/100%/Cancel inline keyboard.
+     * Does NOT execute any transaction yet.
+     */
     const handleDeposit = async (ctx) => {
         const chatId = String(ctx.chat.id);
         const l = lang(chatId);
         if (!await requireWallet(ctx)) return;
 
-        // Send initial loading message — edit it live as progress comes in
+        const statusMsg = await ctx.reply(
+            l === 'ko' ? '_ARB 지갑 잔고 확인 중..._' : '_Checking ARB wallet balance..._',
+            { parse_mode: 'Markdown' }
+        );
+
+        // Fetch ARB USDC balance using the same axios eth_call function from dashboard.js
+        let usdcBalance = 0;
+        try {
+            const { getArbUsdcBalance } = await import('./dashboard.js');
+            const raw = await getArbUsdcBalance(getUserWallet(chatId));
+            usdcBalance = parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
+        } catch { usdcBalance = 0; }
+
+        await ctx.telegram.deleteMessage(chatId, statusMsg.message_id).catch(() => { });
+
+        const balStr = `$${usdcBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        const promptText =
+            `\ud83c\udfe6 *\uc0b4\uc804 \uc7a5\uc804 (Deposit)*\n\n` +
+            `\ud83d\udcb5 \uad80\ud558\uc758 \uc544\ube44\ud2b8\ub7fc \uc9c0\uac11 \uc794\uace0: *${balStr} USDC*\n\n` +
+            `\ud83d\udc47 \ud558\uc774\ud37c\ub9ac\ud034\ub4dc \uc5d4\uc9c4\uc73c\ub85c \uc1a1\uae08\ud560 \uae08\uc561\uc744 \uc120\ud0dd\ud558\uac70\ub098\n` +
+            `\ucc44\ud305\ucc3d\uc5d0 *\uc22b\uc790*\ub97c \uc785\ub825\ud558\uc138\uc694. _(\uc608: 500)_`;
+
+        const promptMsg = await ctx.reply(promptText, {
+            parse_mode: 'Markdown',
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: '25%', callback_data: 'deposit_pct:25' },
+                    { text: '50%', callback_data: 'deposit_pct:50' },
+                    { text: '100% (MAX)', callback_data: 'deposit_pct:100' },
+                    { text: '\u274c \ucde8\uc18c', callback_data: 'deposit_cancel' },
+                ]],
+            },
+        });
+
+        // Store pending state so the text handler and callback handler can pick it up
+        depositPending.set(chatId, { usdcBalance, promptMsgId: promptMsg.message_id });
+    };
+    bot.command('deposit', handleDeposit);
+    bot.hears(/^\ud83d\udce5/, handleDeposit);
+
+    // ── Deposit: % button callback ────────────────────────────────────────────
+    bot.action(/^deposit_pct:(\d+)$/, async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        const pending = depositPending.get(chatId);
+        await ctx.answerCbQuery();
+        if (!pending) return ctx.reply(lang(chatId) === 'ko' ? '\u274c \uc138\uc158\uc774 \ub9cc\ub8cc\ub410\uc2b5\ub2c8\ub2e4. \uc1a1\uae08 \ubc84\ud2bc\uc744 \ub2e4\uc2dc \ub208\ub7ec\uc8fc\uc138\uc694.' : '\u274c Session expired. Please press the deposit button again.');
+
+        const pct = parseInt(ctx.match[1], 10);
+        const amount = +(pending.usdcBalance * pct / 100).toFixed(6);
+        depositPending.delete(chatId);
+
+        // Remove inline keyboard from prompt
+        await ctx.telegram.editMessageReplyMarkup(chatId, pending.promptMsgId, null, { inline_keyboard: [] }).catch(() => { });
+
+        await runDepositFlow(ctx, chatId, amount);
+    });
+
+    // ── Deposit: cancel button ────────────────────────────────────────────────
+    bot.action('deposit_cancel', async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        depositPending.delete(chatId);
+        await ctx.answerCbQuery();
+        await ctx.telegram.editMessageReplyMarkup(chatId, ctx.callbackQuery.message.message_id, null, { inline_keyboard: [] }).catch(() => { });
+        await ctx.reply(lang(chatId) === 'ko' ? '\ud83d\uded1 \uc1a1\uae08\uc774 \ucde8\uc18c\ub418\uc5c8\uc2b5\ub2c8\ub2e4.' : '\ud83d\uded1 Deposit cancelled.');
+    });
+
+    /**
+     * Step 2: Executes the actual deposit transaction.
+     * Called from both the % buttons and text input path.
+     */
+    const runDepositFlow = async (ctx, chatId, amountUsdc) => {
+        const l = lang(chatId);
+
+        if (amountUsdc < 1) {
+            return ctx.reply('\u274c \ucd5c\uc18c \uc1a1\uae08\uc561\uc740 $1 USDC\uc785\ub2c8\ub2e4.', { parse_mode: 'Markdown' });
+        }
+
         const loadingMsg = await ctx.reply(
-            t(l, 'deposit_loading'),
+            t(l, 'deposit_loading') + `\n\n_\ud1a0\ud0c8 \uae08\uc561: *$${amountUsdc.toFixed(2)} USDC*_`,
             { parse_mode: 'Markdown', disable_web_page_preview: true }
         );
 
@@ -245,30 +328,23 @@ export async function startBot() {
             try {
                 await ctx.telegram.editMessageText(
                     chatId, loadingMsg.message_id, null,
-                    t(l, 'deposit_loading') + `\n\n⏱️ _${text}_`,
+                    t(l, 'deposit_loading') + `\n\n_\ud1a0\ud0c8: $${amountUsdc.toFixed(2)} USDC_\n\u23f1\ufe0f _${text}_`,
                     { parse_mode: 'Markdown', disable_web_page_preview: true }
                 );
-            } catch { /* message unchanged — ignore */ }
+            } catch { /* unchanged — ignore */ }
         };
 
         try {
             const privateKey = getUserPrivateKey(chatId);
-
-            const result = await depositToHyperliquid(privateKey, {
-                onProgress: editProgress,
-            });
+            const result = await depositToHyperliquid(privateKey, { amountUsdc, onProgress: editProgress });
 
             if (result.success) {
                 await ctx.telegram.editMessageText(
                     chatId, loadingMsg.message_id, null,
-                    t(l, 'deposit_success', {
-                        amount: result.depositedUsdc,
-                        txHash: result.depositTxHash,
-                    }),
+                    t(l, 'deposit_success', { amount: result.depositedUsdc, txHash: result.depositTxHash }),
                     { parse_mode: 'Markdown', disable_web_page_preview: true }
                 );
-                // Refresh dashboard so user sees updated HL balance immediately
-                setTimeout(() => handleDashboard(ctx), 3000);
+                setTimeout(() => handleDashboard(ctx), 3_000);
             } else {
                 await ctx.telegram.editMessageText(
                     chatId, loadingMsg.message_id, null,
@@ -277,7 +353,7 @@ export async function startBot() {
                 );
             }
         } catch (err) {
-            console.error('[DEPOSIT] handleDeposit error:', err.message);
+            console.error('[DEPOSIT] runDepositFlow error:', err.message);
             await ctx.telegram.editMessageText(
                 chatId, loadingMsg.message_id, null,
                 t(l, 'deposit_error', { error: err.message }),
@@ -285,9 +361,6 @@ export async function startBot() {
             ).catch(() => { });
         }
     };
-    bot.command('deposit', handleDeposit);
-    bot.hears(/^📥/, handleDeposit);
-
 
     // ── /export_key ───────────────────────────────────────────────────────────
     const handleExportKey = async (ctx) => {
@@ -408,8 +481,21 @@ export async function startBot() {
         const DEPOSIT_KEYWORDS = ['거래소로 송금', 'Fund Exchange', 'Enviar al Exchange', '转入交易所', '取引所へ入金', '📥'];
         if (DEPOSIT_KEYWORDS.some(k => userText.includes(k))) return handleDeposit(ctx);
 
+        // ── Deposit: custom amount text input ──────────────────────────────────
+        // If the user has an active deposit prompt and types a number, use it as the amount.
+        const chatIdEarly = String(ctx.chat.id);
+        if (depositPending.has(chatIdEarly)) {
+            const numVal = parseFloat(userText.replace(/,/g, '').trim());
+            if (!isNaN(numVal) && numVal > 0) {
+                const pending = depositPending.get(chatIdEarly);
+                depositPending.delete(chatIdEarly);
+                // Remove inline keyboard from original prompt
+                await ctx.telegram.editMessageReplyMarkup(chatIdEarly, pending.promptMsgId, null, { inline_keyboard: [] }).catch(() => { });
+                return runDepositFlow(ctx, chatIdEarly, numVal);
+            }
+        }
 
-        const chatId = String(ctx.chat.id);
+        const chatId = chatIdEarly;
         const l = lang(chatId);
 
         if (!getUserWallet(chatId)) {
