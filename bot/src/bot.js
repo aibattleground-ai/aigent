@@ -19,6 +19,9 @@ const gridSessions = new Map();   // chatId → { asset, stats }
 const exportConfirm = new Set();   // chatIds awaiting key export confirmation
 const depositPending = new Map();   // chatId → { usdcBalance, promptMsgId }
 
+// ── Global constants ───────────────────────────────────────────────────────────
+const MIN_DEPOSIT_USDC = 5;         // Hyperliquid minimum deposit (USDC)
+
 // ── UI Keyboards ───────────────────────────────────────────────────────────────
 
 /** Inline keyboard for language selection */
@@ -314,12 +317,18 @@ export async function startBot() {
     const runDepositFlow = async (ctx, chatId, amountUsdc) => {
         const l = lang(chatId);
 
-        if (amountUsdc < 1) {
-            return ctx.reply('\u274c \ucd5c\uc18c \uc1a1\uae08\uc561\uc740 $1 USDC\uc785\ub2c8\ub2e4.', { parse_mode: 'Markdown' });
+        // ── 상황 A: 최소 금액 미달 ────────────────────────────────────────────
+        if (amountUsdc < MIN_DEPOSIT_USDC) {
+            return ctx.reply(
+                `❌ *송금 금액이 너무 적습니다.*\n\n` +
+                `하이퍼리퀴드 거래소 규정상 최소 송금액은 *${MIN_DEPOSIT_USDC} USDC* 이상이어야 합니다.\n` +
+                `더 큰 금액을 입력해 주세요.`,
+                { parse_mode: 'Markdown' }
+            );
         }
 
         const loadingMsg = await ctx.reply(
-            t(l, 'deposit_loading') + `\n\n_\ud1a0\ud0c8 \uae08\uc561: *$${amountUsdc.toFixed(2)} USDC*_`,
+            t(l, 'deposit_loading') + `\n\n_토탈 금액: *$${amountUsdc.toFixed(2)} USDC*_`,
             { parse_mode: 'Markdown', disable_web_page_preview: true }
         );
 
@@ -327,10 +336,19 @@ export async function startBot() {
             try {
                 await ctx.telegram.editMessageText(
                     chatId, loadingMsg.message_id, null,
-                    t(l, 'deposit_loading') + `\n\n_\ud1a0\ud0c8: $${amountUsdc.toFixed(2)} USDC_\n\u23f1\ufe0f _${text}_`,
+                    t(l, 'deposit_loading') + `\n\n_토탈: $${amountUsdc.toFixed(2)} USDC_\n⏱️ _${text}_`,
                     { parse_mode: 'Markdown', disable_web_page_preview: true }
                 );
             } catch { /* unchanged — ignore */ }
+        };
+
+        /** Edits the loading msg with a friendly error (never shows raw system errors) */
+        const showError = async (userMsg) => {
+            await ctx.telegram.editMessageText(
+                chatId, loadingMsg.message_id, null,
+                userMsg,
+                { parse_mode: 'Markdown' }
+            ).catch(() => ctx.reply(userMsg, { parse_mode: 'Markdown' }));
         };
 
         try {
@@ -345,18 +363,43 @@ export async function startBot() {
                 );
                 setTimeout(() => handleDashboard(ctx), 3_000);
             } else {
-                await ctx.telegram.editMessageText(
-                    chatId, loadingMsg.message_id, null,
-                    t(l, 'deposit_error', { error: result.error }),
-                    { parse_mode: 'Markdown' }
-                );
+                // ── Classify hlbridge.js errors into friendly messages ─────────
+                const errText = result.error || '';
+
+                if (errText.includes('Insufficient balance') || errText.includes('minimum')) {
+                    // 상황 A variant from hlbridge (< $1)
+                    await showError(
+                        `❌ *송금 금액이 너무 적습니다.*\n\n` +
+                        `하이퍼리퀴드 거래소 규정상 최소 송금액은 *1 USDC* 이상이어야 합니다.\n` +
+                        `더 큰 금액을 입력해 주세요.`
+                    );
+                } else if (errText.includes('가스비') || errText.includes('ETH') || errText.includes('gas')) {
+                    // Gas error — already friendly Korean from hlbridge.js, pass through
+                    await showError(errText);
+                } else if (errText.includes('네트워크') || errText.includes('RPC') || errText.includes('network') || errText.includes('지연')) {
+                    // 상황 C: network/RPC error
+                    await showError(
+                        `❌ *일시적인 통신 오류가 발생했습니다.*\n\n` +
+                        `블록체인 네트워크 혼잡으로 인해 처리가 지연되고 있습니다.\n` +
+                        `귀하의 자금은 안전하며, 잠시 후 다시 시도해 주시기 바랍니다.`
+                    );
+                } else {
+                    // Generic fallback — show friendly, log raw
+                    console.error('[DEPOSIT] bridge error:', errText);
+                    await showError(
+                        `❌ *일시적인 통신 오류가 발생했습니다.*\n\n` +
+                        `블록체인 네트워크 혼잡으로 인해 처리가 지연되고 있습니다.\n` +
+                        `귀하의 자금은 안전하며, 잠시 후 다시 시도해 주시기 바랍니다.`
+                    );
+                }
             }
         } catch (err) {
-            console.error('[DEPOSIT] runDepositFlow error:', err.message);
-            await ctx.telegram.editMessageText(
-                chatId, loadingMsg.message_id, null,
-                t(l, 'deposit_error', { error: err.message }),
-                { parse_mode: 'Markdown' }
+            // ── 상황 C: unexpected system/code error ──────────────────────────
+            console.error('[DEPOSIT] runDepositFlow unhandled error:', err.message);
+            await showError(
+                `❌ *일시적인 통신 오류가 발생했습니다.*\n\n` +
+                `블록체인 네트워크 혼잡으로 인해 처리가 지연되고 있습니다.\n` +
+                `귀하의 자금은 안전하며, 잠시 후 다시 시도해 주시기 바랍니다.`
             ).catch(() => { });
         }
     };
