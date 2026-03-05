@@ -1,0 +1,29 @@
+{
+  "trades": [
+    {
+      "id": 1,
+      "chat_id": "7176844541",
+      "action": "buy",
+      "asset": "BTC",
+      "amount": 500,
+      "condition": "price drops below $70000",
+      "status": "executed",
+      "created_at": "2026-03-04 02:19:25"
+    },
+    {
+      "id": 2,
+      "chat_id": "7176844541",
+      "action": "buy",
+      "asset": "DOGE",
+      "amount": "30% of wallet USDT",
+      "condition": "when Elon Musk tweets keyword $DOGE on Twitter",
+      "status": "executed",
+      "created_at": "2026-03-04 03:01:12"
+    }
+  ],
+  "nextId": 3,
+  "links": {},
+  "wallets": {
+    "0xbcf327add1095312bb663075353dac887d9f2cc5": "7176844541"
+  }
+}

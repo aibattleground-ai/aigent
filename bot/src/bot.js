@@ -37,7 +37,20 @@ export function startBot() {
             `*Commands:*\n` +
             `/start — Welcome message\n` +
             `/help — This help menu\n` +
-            `/history — View your recent mock trades`,
+            `/history — View your recent mock trades\n` +
+            `/connect — Link your Telegram to the Web Dashboard`,
+            { parse_mode: 'Markdown' }
+        );
+    });
+
+    // ── /connect command ──────────────────────────────────────────────────────
+    bot.command('connect', async (ctx) => {
+        const { generateSyncCode } = await import('./db.js');
+        const code = generateSyncCode(String(ctx.chat.id));
+        ctx.reply(
+            `🔗 *AIGENT Account Link*\n\n` +
+            `Your Sync Code is: \`${code}\`\n\n` +
+            `Go to the AIGENT Web Dashboard, click **Connect Telegram**, and enter this code to see your personal trades. (Valid for 1 hour)`,
             { parse_mode: 'Markdown' }
         );
     });
@@ -64,6 +77,9 @@ export function startBot() {
     // ── Main message handler ───────────────────────────────────────────────────
     bot.on('text', async (ctx) => {
         const userText = ctx.message.text;
+
+        // Ignore commands from being parsed as natural language
+        if (userText.startsWith('/')) return;
 
         const thinkingMsg = await ctx.reply('🧠 Claude AI is analyzing your intent...');
 
@@ -109,9 +125,25 @@ export function startBot() {
         }
     });
 
-    // ── Launch ────────────────────────────────────────────────────────────────
-    bot.launch({ dropPendingUpdates: true });
-    console.log('🤖 AIGENT Telegram bot started successfully.');
+    // ── Launch with auto-retry on 409 conflict ────────────────────────────────
+    const launch = async (retries = 10) => {
+        try {
+            await bot.launch({ dropPendingUpdates: true });
+            console.log('🤖 AIGENT Telegram bot started successfully.');
+        } catch (err) {
+            if (err.response?.error_code === 409 && retries > 0) {
+                console.log(`⏳ Telegram 409 conflict — waiting 10s and retrying... (${retries} left)`);
+                await new Promise((r) => setTimeout(r, 10000));
+                return launch(retries - 1);
+            }
+            throw err;
+        }
+    };
+
+    launch().catch((err) => {
+        console.error('❌ Bot failed to start:', err.message);
+        process.exit(1);
+    });
 
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));

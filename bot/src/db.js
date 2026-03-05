@@ -19,12 +19,15 @@ export const DB_PATH = path.join(__dirname, '..', 'nexussphere-db.json');
  */
 function readDB() {
   if (!fs.existsSync(DB_PATH)) {
-    return { trades: [], nextId: 1 };
+    return { trades: [], nextId: 1, links: {}, wallets: {} };
   }
   try {
-    return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+    const db = JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+    if (!db.links) db.links = {};
+    if (!db.wallets) db.wallets = {};
+    return db;
   } catch {
-    return { trades: [], nextId: 1 };
+    return { trades: [], nextId: 1, links: {}, wallets: {} };
   }
 }
 
@@ -41,7 +44,7 @@ function writeDB(data) {
  */
 export function initDB() {
   if (!fs.existsSync(DB_PATH)) {
-    writeDB({ trades: [], nextId: 1 });
+    writeDB({ trades: [], nextId: 1, links: {}, wallets: {} });
     console.log(`✅ Database initialized at: ${DB_PATH}`);
   } else {
     console.log(`✅ Database loaded from: ${DB_PATH}`);
@@ -92,3 +95,37 @@ export function getTradesByChatId(chatId) {
   const db = readDB();
   return [...db.trades].reverse().filter((t) => t.chat_id === chatId);
 }
+
+/**
+ * Generates a 6-character sync code for a Telegram chat.
+ */
+export function generateSyncCode(chatId) {
+  const db = readDB();
+  const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+  db.links[code] = { chatId, expires: Date.now() + 1000 * 60 * 60 }; // 1hr expiry
+  writeDB(db);
+  return code;
+}
+
+/**
+ * Claims a sync code and links it to a wallet address.
+ */
+export function claimSyncCode(code, walletAddress) {
+  const db = readDB();
+  const link = db.links[code.toUpperCase()];
+  if (!link || Date.now() > link.expires) return false;
+
+  db.wallets[walletAddress.toLowerCase()] = link.chatId;
+  delete db.links[code.toUpperCase()];
+  writeDB(db);
+  return true;
+}
+
+/**
+ * Looks up the Telegram Chat ID linked to a wallet address.
+ */
+export function getChatIdByAddress(walletAddress) {
+  const db = readDB();
+  return db.wallets[walletAddress?.toLowerCase()] || null;
+}
+

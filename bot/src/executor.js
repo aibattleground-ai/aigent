@@ -1,6 +1,6 @@
 /**
  * NexusSphere - Mock Trade Executor
- * Simulates trade execution and persists results to SQLite.
+ * Simulates trade execution and persists results to a JSON file database.
  */
 import { insertTrade } from './db.js';
 

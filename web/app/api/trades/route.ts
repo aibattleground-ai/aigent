@@ -10,22 +10,38 @@ const DB_PATH =
     process.env.DB_PATH ||
     path.join(process.cwd(), '..', 'bot', 'nexussphere-db.json');
 
-export async function GET() {
+export async function GET(req: Request) {
     try {
+        const { searchParams } = new URL(req.url);
+        const address = searchParams.get('address')?.toLowerCase();
+
         if (!fs.existsSync(DB_PATH)) {
             return NextResponse.json({
-                trades: [],
+                globalTrades: [],
+                personalTrades: [],
                 message: 'No trades yet. Start the bot and send a trade command on Telegram!',
             });
         }
 
         const raw = fs.readFileSync(DB_PATH, 'utf-8');
         const db = JSON.parse(raw);
+        if (!db.wallets) db.wallets = {};
 
-        // Return trades sorted newest first
-        const trades = [...(db.trades || [])].reverse().slice(0, 100);
+        // All trades sorted newest first
+        const allTrades = [...(db.trades || [])].reverse();
 
-        return NextResponse.json({ trades });
+        // Global is just the top 100 recent
+        const globalTrades = allTrades.slice(0, 100);
+
+        // Personal
+        let personalTrades: any[] = [];
+        const linkedChatId = address ? db.wallets[address] : null;
+
+        if (linkedChatId) {
+            personalTrades = allTrades.filter(t => t.chat_id === linkedChatId).slice(0, 50);
+        }
+
+        return NextResponse.json({ globalTrades, personalTrades, isLinked: !!linkedChatId });
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unknown error';
         console.error('[API] Error fetching trades:', message);
