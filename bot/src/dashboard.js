@@ -5,17 +5,35 @@
  * Renders a clean emoji-based Telegram dashboard updated every 60 seconds
  * via editMessageText — one message per user, updated in-place.
  *
- * Mark price is fetched from Hyperliquid's public REST API (no auth needed).
- * Falls back to "N/A" silently on any fetch failure.
+ * USDC balance: fetched live from chain via ethers.js balanceOf
+ * Mark price:   fetched from Hyperliquid public REST API with 5s timeout
  */
 
+import { ethers } from 'ethers';
+
 // ── Session Store ─────────────────────────────────────────────────────────────
-// Maps chatId → { intervalId, messageId, asset, gridCount, totalUsdc, lowerPrice, upperPrice, startTime }
 const sessions = new Map();
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const UPDATE_INTERVAL_MS = 60_000;
-const HL_PRICE_TIMEOUT_MS = 5_000;   // 5s timeout — prevents FETCH TIMEOUT hangs
+const FETCH_TIMEOUT_MS = 5_000;
+
+// USDC contract addresses
+const USDC = {
+    mainnet: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',  // Arbitrum One
+    testnet: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',  // Arbitrum Sepolia
+};
+
+// Public RPC fallbacks (used when ARB_RPC_URL not set, or as backup)
+const RPC = {
+    mainnet: 'https://arb1.arbitrum.io/rpc',
+    testnet: 'https://sepolia-rollup.arbitrum.io/rpc',
+};
+
+// Minimal ERC-20 ABI for balanceOf
+const ERC20_ABI = [
+    'function balanceOf(address owner) view returns (uint256)',
+];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -26,17 +44,59 @@ function timeStr() {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function getProvider(isTestnet) {
+    // Prefer configured ARB_RPC_URL on mainnet; use public RPC otherwise
+    const envUrl = process.env.ARB_RPC_URL;
+    const rpcUrl = (!isTestnet && envUrl && !envUrl.includes('YOUR_KEY'))
+        ? envUrl
+        : (isTestnet ? RPC.testnet : RPC.mainnet);
+
+    return new ethers.providers.JsonRpcProvider(rpcUrl);
+}
+
+/**
+ * Fetches live USDC balance for a wallet address.
+ * @param {string} walletAddress
+ * @param {boolean} isTestnet
+ * @returns {Promise<string>} Formatted balance e.g. "$1,234.56"
+ */
+async function getUsdcBalance(walletAddress, isTestnet) {
+    if (!walletAddress) return null;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    try {
+        const provider = getProvider(isTestnet);
+        const usdcAddress = isTestnet ? USDC.testnet : USDC.mainnet;
+        const contract = new ethers.Contract(usdcAddress, ERC20_ABI, provider);
+
+        // Add a manual timeout via Promise.race
+        const rawBalance = await Promise.race([
+            contract.balanceOf(walletAddress),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), FETCH_TIMEOUT_MS)
+            ),
+        ]);
+
+        clearTimeout(timer);
+
+        // USDC has 6 decimals
+        const balance = Number(rawBalance) / 1e6;
+        return `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } catch {
+        clearTimeout(timer);
+        return null;
+    }
+}
+
 /**
  * Fetches mark price from Hyperliquid's PUBLIC REST endpoint.
- * Uses a manual timeout (AbortController) to avoid hanging.
- * No SDK, no auth — just a lightweight fetch.
- *
- * @param {string} asset  e.g. "ETH"
- * @returns {Promise<number|null>}
+ * 5s AbortController timeout — never hangs.
  */
 async function getMarkPrice(asset) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), HL_PRICE_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
         const res = await fetch('https://api.hyperliquid.xyz/info', {
@@ -45,13 +105,11 @@ async function getMarkPrice(asset) {
             body: JSON.stringify({ type: 'allMids' }),
             signal: controller.signal,
         });
-
         clearTimeout(timer);
 
         if (!res.ok) return null;
         const mids = await res.json();
 
-        // Try all common key formats
         for (const key of [`${asset}-USD`, `${asset}-PERP`, asset]) {
             const price = parseFloat(mids[key]);
             if (!isNaN(price) && price > 0) return price;
@@ -74,18 +132,26 @@ function simulatePnL(session) {
 // ── Dashboard Renderer ────────────────────────────────────────────────────────
 
 async function buildDashboard(session) {
-    const markPrice = await getMarkPrice(session.asset);
+    const isTestnet = session.isTestnet;
+
+    // Fetch both in parallel for speed
+    const [markPrice, usdcBalance] = await Promise.all([
+        getMarkPrice(session.asset),
+        getUsdcBalance(session.walletAddress, isTestnet),
+    ]);
 
     const priceStr = markPrice
         ? `$${markPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : '⏳ Connecting...';
+        : '⏳ Fetching...';
+
+    const balanceStr = usdcBalance || '⏳ Fetching...';
 
     const pnl = simulatePnL(session);
     const pnlSign = pnl >= 0 ? '+' : '';
     const pnlPct = `${pnlSign}${pnl.toFixed(2)}%`;
     const pnlEmoji = pnl >= 0 ? '🟢' : '🔴';
 
-    const net = session.isTestnet ? 'TESTNET' : '🔴 MAINNET';
+    const net = isTestnet ? 'TESTNET' : 'MAINNET 🔴';
 
     const algoLabel = session.gridCount > 0
         ? `Grid Bot (${session.gridCount} Grids)`
@@ -97,10 +163,10 @@ async function buildDashboard(session) {
 
     return (
         `📊 *AIGENT LIVE DASHBOARD*\n` +
-        `🟢 System Status: OPERATIONAL \\| ${net}\n\n` +
-        `🏦 *금고 자산 (Vault)*\n` +
-        `💵 USDC 투입액: *$${session.totalUsdc > 0 ? session.totalUsdc.toLocaleString() : '—'}*\n\n` +
-        `📈 *포지션 상태 (Hyperliquid)*\n` +
+        `🟢 System Status: OPERATIONAL | ${net}\n\n` +
+        `🏦 *금고 자산 \\(Vault\\)*\n` +
+        `💵 USDC 잔고: *${balanceStr}*\n\n` +
+        `📈 *포지션 상태 \\(Hyperliquid\\)*\n` +
         `🪙 티커: *${session.asset}/USDC*\n` +
         `🎯 현재가\\(Mark Px\\): *${priceStr}*\n` +
         `🚀 수익률\\(PnL\\): *${pnlPct}* ${pnlEmoji}\n\n` +
@@ -112,13 +178,6 @@ async function buildDashboard(session) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Starts (or restarts) a live dashboard for a chat.
- *
- * @param {import('telegraf').Telegraf} bot
- * @param {string} chatId
- * @param {Object} opts
- */
 export async function startDashboard(bot, chatId, opts = {}) {
     killdDashboard(chatId);
 
@@ -128,6 +187,7 @@ export async function startDashboard(bot, chatId, opts = {}) {
         totalUsdc: opts.totalUsdc || 0,
         lowerPrice: opts.lowerPrice || 0,
         upperPrice: opts.upperPrice || 0,
+        walletAddress: opts.walletAddress || null,
         isTestnet: process.env.HL_TESTNET !== 'false',
         startTime: Date.now(),
         pnlBase: (Math.random() - 0.3) * 2.0,
@@ -135,7 +195,7 @@ export async function startDashboard(bot, chatId, opts = {}) {
         intervalId: null,
     };
 
-    // ── Send initial message ──────────────────────────────────────────────────
+    // ── Send initial message ─────────────────────────────────────────────────
     const initialText = await buildDashboard(session);
     let sentMsg;
     try {
@@ -143,21 +203,17 @@ export async function startDashboard(bot, chatId, opts = {}) {
             parse_mode: 'MarkdownV2',
         });
     } catch {
-        // MarkdownV2 strict escaping issues — fall back to Markdown
         try {
             sentMsg = await bot.telegram.sendMessage(chatId, initialText, {
                 parse_mode: 'Markdown',
             });
-        } catch (e) {
-            // Last resort: send plain text
-            sentMsg = await bot.telegram.sendMessage(chatId,
-                `📊 AIGENT LIVE DASHBOARD\n🔄 ${timeStr()}`
-            );
+        } catch {
+            sentMsg = await bot.telegram.sendMessage(chatId, `📊 AIGENT LIVE DASHBOARD\n🔄 ${timeStr()}`);
         }
     }
     session.messageId = sentMsg.message_id;
 
-    // ── 60s update loop ───────────────────────────────────────────────────────
+    // ── 60s update loop ──────────────────────────────────────────────────────
     session.intervalId = setInterval(async () => {
         try {
             const text = await buildDashboard(session);
@@ -166,12 +222,9 @@ export async function startDashboard(bot, chatId, opts = {}) {
             });
         } catch (err) {
             const code = err?.response?.error_code;
-            if (code === 429) return;                                            // rate limit — skip tick
-            if (code === 400 && err?.message?.includes('not modified')) return; // no change — skip
-            if (code === 400 || code === 403) {
-                killdDashboard(chatId);
-                return;
-            }
+            if (code === 429) return;
+            if (code === 400 && err?.message?.includes('not modified')) return;
+            if (code === 400 || code === 403) { killdDashboard(chatId); return; }
             console.error(`[DASHBOARD][${chatId}]`, err.message);
         }
     }, UPDATE_INTERVAL_MS);

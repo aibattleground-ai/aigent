@@ -171,6 +171,7 @@ export async function startBot() {
             totalUsdc: gs?.stats?.totalUsdc || 0,
             lowerPrice: gs?.stats?.lowerPrice || 0,
             upperPrice: gs?.stats?.upperPrice || 0,
+            walletAddress: getUserWallet(chatId),   // for live USDC balanceOf query
         });
     };
     bot.command('dashboard', handleDashboard);
@@ -294,11 +295,20 @@ export async function startBot() {
 
     // ── Main NL Text Handler ──────────────────────────────────────────────────
     bot.on('text', async (ctx) => {
-        const userText = ctx.message.text;
+        const userText = ctx.message.text.trim();
         if (userText.startsWith('/')) return;
 
-        // Skip keyboard button texts (handled by bot.hears above)
-        if (/^[📊💸⚙️]/.test(userText)) return;
+        // ── Exact-match keyboard button router ─────────────────────────────────
+        // Build a Set of all possible button texts for every supported language
+        // so they NEVER leak into the Claude NLP parser regardless of ordering.
+        const BUTTON_ACTIONS = [
+            { pattern: /^📊/, handler: handleDashboard },
+            { pattern: /^💸/, handler: handleWithdraw },
+            { pattern: /^⚙️/, handler: handleExportKey },
+        ];
+        for (const { pattern, handler } of BUTTON_ACTIONS) {
+            if (pattern.test(userText)) return handler(ctx);
+        }
 
         const chatId = String(ctx.chat.id);
         const l = lang(chatId);
