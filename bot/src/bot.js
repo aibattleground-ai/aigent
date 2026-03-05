@@ -158,10 +158,16 @@ export async function startBot() {
         const chatId = String(ctx.chat.id);
         if (!await requireWallet(ctx)) return;
 
-        const args = (ctx.message?.text || '').split(/\s+/).slice(1);
-        const requestedAsset = args[0]?.toUpperCase() || null;
+        // Parse asset only if it looks like a real ticker (2–6 uppercase letters, e.g. ETH, BTC)
+        // Ignore button labels like '대시보드', 'Dashboard', '📊 대시보드', etc.
+        const rawText = ctx.message?.text || '';
+        const args = rawText.split(/\s+/).slice(1);
+        const candidateAsset = args[0]?.toUpperCase() || '';
+        const isValidTicker = /^[A-Z]{2,6}$/.test(candidateAsset);
+
         const gs = gridSessions.get(chatId);
-        const asset = requestedAsset || gs?.stats?.asset || 'ETH';
+        // Priority: explicit valid ticker > active grid asset > default ETH
+        const asset = isValidTicker ? candidateAsset : (gs?.stats?.asset || 'ETH');
 
         await ctx.reply(`_Initializing ${asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
 
@@ -171,7 +177,7 @@ export async function startBot() {
             totalUsdc: gs?.stats?.totalUsdc || 0,
             lowerPrice: gs?.stats?.lowerPrice || 0,
             upperPrice: gs?.stats?.upperPrice || 0,
-            walletAddress: getUserWallet(chatId),   // for live USDC balanceOf query
+            walletAddress: getUserWallet(chatId),
         });
     };
     bot.command('dashboard', handleDashboard);

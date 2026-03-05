@@ -153,11 +153,17 @@ function simulatePnL(session) {
 async function buildDashboard(session) {
     const isTestnet = session.isTestnet;
 
-    // Fetch both in parallel for speed
-    const [markPrice, usdcBalance] = await Promise.all([
-        getMarkPrice(session.asset),
-        getUsdcBalance(session.walletAddress, isTestnet),
-    ]);
+    // Fetch price and balance INDEPENDENTLY — one failing never blocks the other
+    let markPrice = null;
+    let usdcBalance = null;
+
+    try {
+        markPrice = await getMarkPrice(session.asset);
+    } catch { /* price fetch failed — dashboard still renders with N/A */ }
+
+    try {
+        usdcBalance = await getUsdcBalance(session.walletAddress, isTestnet);
+    } catch { /* balance fetch failed — dashboard still renders with N/A */ }
 
     const priceStr = markPrice
         ? `$${markPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
