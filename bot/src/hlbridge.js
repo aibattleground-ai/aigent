@@ -24,10 +24,14 @@ const POLL_INTERVAL_MS = 3_000;
 const POLL_TIMEOUT_MS = 90_000;
 
 // Confirmed from Blockscout: selector 0xb30b5bce
-// Tuple: (address token, uint64 amount, uint64 deadline, (uint256 r, uint256 s, uint8 v) sig)
+// Struct: (address token, uint64 amount, uint64 deadline, (uint256 r, uint256 s, uint8 v) signature)
 const BRIDGE_IFACE = new ethers.utils.Interface([
     'function batchedDepositWithPermit((address token, uint64 amount, uint64 deadline, (uint256 r, uint256 s, uint8 v) signature)[] deposits)',
 ]);
+
+// Bridge emits this event instead of reverting when permit fails — status stays 0x1!
+// FailedPermitDeposit(address indexed token, uint64 amount, uint32 errorCode)
+const FAILED_PERMIT_TOPIC = '0xa2dc875d1f90a167d873c30143e7631eb311ea851e74c8c4e9b92c80efeba489';
 
 // EIP-2612 USDC permit domain (verified from chain: name="USD Coin", version="2")
 const USDC_PERMIT_NAME = 'USD Coin';
@@ -96,7 +100,14 @@ async function waitForReceipt(txHash) {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
         const rec = await rpcCall({ jsonrpc: '2.0', id: 88, method: 'eth_getTransactionReceipt', params: [txHash] });
-        if (rec) return rec;
+        if (rec) {
+            // Bridge returns status=0x1 even on permit failure — check logs!
+            const hasFailEvent = (rec.logs || []).some(l => l.topics?.[0] === FAILED_PERMIT_TOPIC);
+            if (hasFailEvent) {
+                throw new Error('PERMIT_FAILED: FailedPermitDeposit event detected in receipt');
+            }
+            return rec;
+        }
         await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
     }
     throw new Error(`TIMEOUT: receipt for ${txHash.slice(0, 10)}... after ${POLL_TIMEOUT_MS / 1000}s`);
@@ -140,7 +151,7 @@ async function getGasPrice() {
 // ── EIP-2612 Permit signing (offline) ─────────────────────────────────────────
 
 async function signUsdcPermit(wallet, spender, amount, usdcNonce) {
-    // deadline must fit in uint64 — use 1 hour from now
+    // deadline must be uint64-safe — already guaranteed (< 2^64)
     const deadline = Math.floor(Date.now() / 1000) + 3600;
 
     const domain = {
@@ -161,14 +172,17 @@ async function signUsdcPermit(wallet, spender, amount, usdcNonce) {
     const message = {
         owner: wallet.address,
         spender,
-        value: amount,   // BigNumber
+        // Use MaxUint256 — avoids uint64 truncation when Bridge compares
+        // permit.value vs its internal uint64 amount representation.
+        // Standard practice: any value >= depositAmount passes the Bridge check.
+        value: ethers.constants.MaxUint256,
         nonce: usdcNonce,
         deadline,
     };
 
     const sig = await wallet._signTypedData(domain, types, message);
     const { v, r, s } = ethers.utils.splitSignature(sig);
-    console.log(`[HLBRIDGE] Permit signed: v=${v} usdcNonce=${usdcNonce} deadline=${deadline}`);
+    console.log(`[HLBRIDGE] Permit signed: v=${v} usdcNonce=${usdcNonce} deadline=${deadline} value=MaxUint256`);
     return { v, r, s, deadline };
 }
 
@@ -287,6 +301,12 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
     } catch (err) {
         const msg = (err?.message || '').toLowerCase();
         console.error('[HLBRIDGE] Deposit error. Raw:', err.response?.data ?? err.message);
+        if (msg.includes('permit_failed') || msg.includes('failedpermit')) {
+            return {
+                success: false,
+                error: '❌ USDC 서명(Permit) 검증 실패\n\n이미 사용된 nonce이거나 허가된 잔액이 부족합니다.\n잠시 후 다시 시도해 주세요.',
+            };
+        }
         if (msg.includes('timeout')) {
             return { success: false, error: '❌ 블록체인 응답 없음 (90초 초과)\n귀하의 자금은 안전합니다. 잠시 후 다시 시도해주세요.' };
         }
