@@ -1,6 +1,5 @@
 /**
- * AIGENT Bot - Entry Point
- * Initializes the database and starts the Telegram bot.
+ * AIGENT Bot — Entry Point
  */
 import * as dotenv from 'dotenv';
 import path from 'path';
@@ -9,20 +8,19 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(__dirname, '../../.env'), override: true });
 
-import { initDB } from './db.js';
-import { startBot } from './bot.js';
-
 // Validate required environment variables
-const requiredEnvVars = ['TELEGRAM_BOT_TOKEN', 'ANTHROPIC_API_KEY'];
-for (const envVar of requiredEnvVars) {
-  if (!process.env[envVar]) {
-    console.error(`❌ Missing required environment variable: ${envVar}`);
+const REQUIRED = ['TELEGRAM_BOT_TOKEN', 'ANTHROPIC_API_KEY'];
+for (const key of REQUIRED) {
+  if (!process.env[key]) {
+    console.error(`❌ Missing required env var: ${key}`);
     process.exit(1);
   }
 }
 
-// Initialize JSON database, then start the bot
-initDB();
-startBot();
+console.log('🚀 AIGENT starting...');
 
-console.log('🚀 AIGENT is online...');
+// Dynamic import AFTER dotenv runs so all env vars are loaded in time
+const { startBot } = await import('./bot.js');
+
+// await keeps the Node process alive until Telegraf's polling loop takes over
+await startBot();

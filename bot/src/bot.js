@@ -86,7 +86,7 @@ async function registerCommands(bot) {
 }
 
 // ── Main Bot Start ─────────────────────────────────────────────────────────────
-export function startBot() {
+export async function startBot() {
     initDB();
     const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
@@ -432,7 +432,7 @@ export function startBot() {
         }
     };
 
-    launch().catch((err) => { console.error('Bot failed:', err.message); process.exit(1); });
+    await launch();
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
