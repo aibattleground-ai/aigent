@@ -456,4 +456,9 @@ export async function startBot() {
     await launch();
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+    // Telegraf v4 bot.launch() resolves immediately once polling is registered.
+    // Without this, startBot() returns, index.js finishes, and Node.js exits.
+    // This never-resolving Promise keeps the event loop alive until SIGINT/SIGTERM.
+    await new Promise(() => { });
 }
