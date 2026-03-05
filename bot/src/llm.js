@@ -57,10 +57,21 @@ Korean: "솔라나 즉시 매수 300달러"
 → {"strategy":"order","asset":"SOL","action":"buy","type":"market","size_usd":300,"leverage":1}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYPE 4: General Chat  (strategy: "chat")
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Triggered when the user is NOT requesting a trade — greetings, questions about the bot, general crypto chat, etc.
+Fields: strategy, reply (a natural, helpful response as AIGENT the trading AI)
+Example: "너는 누구야?" → {"strategy":"chat","reply":"저는 AIGENT입니다. 세계 최초의 AI 유동성 엔진으로, 여러분의 자연어 매매 명령을 기관급 알고리즘으로 즉시 실행합니다. 무엇을 도와드릴까요?"}
+Example: "안녕!" → {"strategy":"chat","reply":"안녕하세요! AIGENT입니다. 매매 명령을 내려주시거나 대시보드를 확인해 보세요."}
+Example: "What can you do?" → {"strategy":"chat","reply":"I'm AIGENT — your AI trading engine. I can execute market/limit orders, run grid bots, and monitor your positions on Hyperliquid. Just tell me what to trade!"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULES:
 - Return ONLY valid JSON. No markdown, no explanations.
 - Always include the "strategy" field.
-- If you cannot parse: {"error": "Could not parse intent"}
+- If the message is clearly a trade/grid/order intent → use types 1-3.
+- If the message is conversational or unclear → use type 4 (chat). NEVER return an error for casual messages.
+- If you absolutely cannot parse a trading intent AND it's not casual chat: {"error": "Could not parse intent"}
 - Translate: 비트코인→BTC, 이더리움/이더→ETH, 솔라나→SOL, 아비트럼→ARB`;
 
 export async function parseIntent(userMessage) {

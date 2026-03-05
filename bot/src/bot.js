@@ -176,8 +176,8 @@ export async function startBot() {
         const isValidTicker = /^[A-Z]{2,6}$/.test(candidateAsset);
 
         const gs = gridSessions.get(chatId);
-        // Priority: explicit valid ticker > active grid asset > default ETH
-        const asset = isValidTicker ? candidateAsset : (gs?.stats?.asset || 'ETH');
+        // Priority: explicit valid ticker > active grid asset > default BTC
+        const asset = isValidTicker ? candidateAsset : (gs?.stats?.asset || 'BTC');
 
         await ctx.reply(`_Initializing ${asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
 
@@ -516,6 +516,12 @@ export async function startBot() {
             }
 
             const strategy = intent.strategy || 'simple';
+
+            // ── CHAT (general conversation / questions) ────────────────────────
+            if (strategy === 'chat') {
+                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                return ctx.reply(intent.reply || '안녕하세요! 매매 명령을 내려주세요.', { parse_mode: 'Markdown' });
+            }
 
             // ── GRID ──────────────────────────────────────────────────────────
             if (strategy === 'grid') {

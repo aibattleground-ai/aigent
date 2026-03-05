@@ -344,7 +344,9 @@ export async function executeUniversalOrder(intentData, userPrivateKey = null) {
     // ── 7. Submit order (with retry) ───────────────────────────────────────
     let response;
     try {
-        response = await withRetry(() => sdk.exchange.order(orderRequest, 'na'));
+        response = await withRetry(() =>
+            sdk.exchange.placeOrder({ orders: [orderRequest], grouping: 'na' })
+        );
         console.log(`[ORDER] Response:`, JSON.stringify(response));
     } catch (err) {
         return { success: false, summary: null, error: classifyError(err, intentData), details: null };
