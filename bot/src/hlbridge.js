@@ -172,17 +172,16 @@ async function signUsdcPermit(wallet, spender, amount, usdcNonce) {
     const message = {
         owner: wallet.address,
         spender,
-        // Use MaxUint256 — avoids uint64 truncation when Bridge compares
-        // permit.value vs its internal uint64 amount representation.
-        // Standard practice: any value >= depositAmount passes the Bridge check.
-        value: ethers.constants.MaxUint256,
+        // MUST match the exact deposit amount — Bridge calls permit(owner, spender, deposit.amount, ...)
+        // using MaxUint256 causes ecrecover mismatch inside Bridge
+        value: amount,
         nonce: usdcNonce,
         deadline,
     };
 
     const sig = await wallet._signTypedData(domain, types, message);
     const { v, r, s } = ethers.utils.splitSignature(sig);
-    console.log(`[HLBRIDGE] Permit signed: v=${v} usdcNonce=${usdcNonce} deadline=${deadline} value=MaxUint256`);
+    console.log(`[HLBRIDGE] Permit signed: v=${v} usdcNonce=${usdcNonce} deadline=${deadline} value=${amount.toString()}`);
     return { v, r, s, deadline };
 }
 
