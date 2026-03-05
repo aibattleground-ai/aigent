@@ -1,14 +1,16 @@
 /**
  * AIGENT - Telegraf Bot
- * Handles incoming messages, routes to Claude AI, and triggers trade execution.
- * Supports: simple trades (mock) and grid bot strategies (Hyperliquid live).
+ * Handles incoming messages, routes to Claude AI, executes strategies.
+ * Supports: /dashboard (live Bloomberg terminal), grid bot (Hyperliquid), simple trades.
  */
 import { Telegraf } from 'telegraf';
 import { parseIntent } from './llm.js';
 import { executeMockTrade } from './executor.js';
+import { startDashboard, killdDashboard, getSession, getActiveSessions } from './dashboard.js';
 
-// ── /cancelgrid state store (in-memory — replace with DB for persistence) ──────
-const activeGridSessions = new Map(); // chatId → { levels, asset }
+// ── In-memory grid session store ──────────────────────────────────────────────
+// chatId → { asset, stats }  (set after a successful grid bot run)
+const activeGridSessions = new Map();
 
 /**
  * Initializes and launches the Telegram bot.
@@ -20,15 +22,16 @@ export function startBot() {
     bot.command('start', (ctx) => {
         const name = ctx.from.first_name || 'Trader';
         ctx.reply(
-            `👋 Welcome to *AIGENT*, ${name}!\n\n` +
-            `I'm your AI-powered crypto trading agent. Tell me what you want to do in plain English or Korean.\n\n` +
-            `*Simple Trade Examples:*\n` +
-            `• "Buy $100 of ETH if it drops 5%"\n` +
-            `• "이더리움 5% 떨어지면 100달러 매수"\n\n` +
-            `*Grid Bot Examples:*\n` +
-            `• "Set up a grid on ETH between $2800–$3200 with 20 grids, $1000 USDC"\n` +
-            `• "이더리움 2800-3200 그리드봇 20개 격자 1000달러"\n\n` +
-            `Type /help for more commands.`,
+            `*AIGENT PROTOCOL ${name.toUpperCase()}*\n` +
+            `_Autonomous AI Liquidity Engine — LIVE_\n\n` +
+            `*Commands:*\n` +
+            `/dashboard — Live terminal dashboard\n` +
+            `/cancelgrid — Stop active grid session\n` +
+            `/history — Recent trades\n` +
+            `/help — Full help\n\n` +
+            `*Natural Language:*\n` +
+            `• "ETH 그리드봇 2800-3200 20개 $1000"\n` +
+            `• "Buy $200 of BTC if it drops 5%"`,
             { parse_mode: 'Markdown' }
         );
     });
@@ -36,19 +39,49 @@ export function startBot() {
     // ── /help ─────────────────────────────────────────────────────────────────
     bot.command('help', (ctx) => {
         ctx.reply(
-            `📖 *AIGENT Help*\n\n` +
-            `*Supported Strategies:*\n` +
-            `• *Simple Trade* — Buy/sell on price condition\n` +
-            `• *Grid Bot* — Place limit buy/sell grid on Hyperliquid\n\n` +
-            `*Commands:*\n` +
-            `/start — Welcome message\n` +
-            `/help — This help menu\n` +
-            `/history — View recent trades\n` +
-            `/cancelgrid — Cancel active grid session\n` +
-            `/connect — Link to Web Dashboard\n\n` +
-            `*Grid Bot Keywords:* grid, 그리드, 그리드봇, range trading`,
+            `*AIGENT — Command Reference*\n\n` +
+            `*Dashboard:*\n` +
+            `/dashboard [ASSET] — Live terminal (default: ETH)\n` +
+            `  Example: /dashboard BTC\n\n` +
+            `*Grid Bot (Hyperliquid):*\n` +
+            `"Set up ETH grid $2800–$3200, 20 grids, $1000"\n` +
+            `"이더리움 2800-3200 그리드봇 20개 1000달러"\n\n` +
+            `*Simple Trade:*\n` +
+            `"Buy $100 ETH if drops 5%"\n\n` +
+            `*Session Control:*\n` +
+            `/cancelgrid — Stop active grid\n` +
+            `/history — Trade history\n` +
+            `/connect — Link web dashboard`,
             { parse_mode: 'Markdown' }
         );
+    });
+
+    // ── /dashboard ────────────────────────────────────────────────────────────
+    bot.command('dashboard', async (ctx) => {
+        const chatId = String(ctx.chat.id);
+
+        // Parse optional asset argument: /dashboard BTC
+        const args = ctx.message.text.split(/\s+/).slice(1);
+        const requestedAsset = args[0]?.toUpperCase() || null;
+
+        // Determine session context
+        const gridSession = activeGridSessions.get(chatId);
+        const asset = requestedAsset || gridSession?.stats?.asset || 'ETH';
+        const gridCount = gridSession?.stats?.gridCount || 0;
+        const totalUsdc = gridSession?.stats?.totalUsdc || 0;
+        const lowerPrice = gridSession?.stats?.lowerPrice || 0;
+        const upperPrice = gridSession?.stats?.upperPrice || 0;
+
+        // Confirm to user (brief message before dashboard appears)
+        await ctx.reply(
+            `*AIGENT Dashboard* — Initializing ${asset}/USDC terminal...\n_Fetching live data..._`,
+            { parse_mode: 'Markdown' }
+        );
+
+        // Start (or restart) dashboard
+        await startDashboard(bot, chatId, {
+            asset, gridCount, totalUsdc, lowerPrice, upperPrice,
+        });
     });
 
     // ── /connect ──────────────────────────────────────────────────────────────
@@ -56,9 +89,9 @@ export function startBot() {
         const { generateSyncCode } = await import('./db.js');
         const code = generateSyncCode(String(ctx.chat.id));
         ctx.reply(
-            `🔗 *AIGENT Account Link*\n\n` +
-            `Your Sync Code is: \`${code}\`\n\n` +
-            `Go to the AIGENT Web Dashboard, click **Connect Telegram**, and enter this code to see your personal trades. (Valid for 1 hour)`,
+            `*AIGENT Account Link*\n\n` +
+            `Sync Code: \`${code}\`\n\n` +
+            `Enter this code in the AIGENT Web Dashboard to link your account. (Valid 1 hour)`,
             { parse_mode: 'Markdown' }
         );
     });
@@ -69,15 +102,15 @@ export function startBot() {
         const trades = getTradesByChatId(String(ctx.chat.id));
 
         if (trades.length === 0) {
-            return ctx.reply('📭 No trades found. Send me a trade instruction to get started!');
+            return ctx.reply('No trades found. Send a trade instruction to begin.');
         }
 
         const lines = trades.slice(0, 10).map((t) =>
-            `• [#${t.id}] ${t.action.toUpperCase()} $${t.amount} of ${t.asset} — ${t.condition} (${t.created_at})`
+            `[#${t.id}] ${t.action.toUpperCase()} $${t.amount} ${t.asset} — ${t.condition}`
         );
 
         ctx.reply(
-            `📊 *Your Recent Trades:*\n\n${lines.join('\n')}`,
+            `*Recent Trades:*\n\`\`\`\n${lines.join('\n')}\n\`\`\``,
             { parse_mode: 'Markdown' }
         );
     });
@@ -85,67 +118,83 @@ export function startBot() {
     // ── /cancelgrid ───────────────────────────────────────────────────────────
     bot.command('cancelgrid', async (ctx) => {
         const chatId = String(ctx.chat.id);
-        if (!activeGridSessions.has(chatId)) {
-            return ctx.reply('⚠️ No active grid session found for your account.');
+        const session = activeGridSessions.get(chatId);
+
+        // Also kill any running dashboard for this user
+        killdDashboard(chatId);
+
+        if (!session) {
+            return ctx.reply('No active grid session found.');
         }
 
-        const session = activeGridSessions.get(chatId);
         activeGridSessions.delete(chatId);
-
-        // Note: Cancelling open orders on Hyperliquid requires calling sdk.exchange.cancelAll()
-        // This is a placeholder — full cancel logic can be added when order IDs are stored.
         ctx.reply(
-            `🛑 *Grid Session Cancelled*\n\n` +
-            `Asset: *${session.asset}*\n\n` +
-            `⚠️ Note: Open orders on Hyperliquid must be manually cancelled via the exchange interface, or add /cancelorders command with order ID tracking.`,
+            `*Grid Session Stopped*\n\n` +
+            `Asset: ${session.stats?.asset || 'N/A'}\n\n` +
+            `_Note: Open orders on Hyperliquid must be cancelled via the exchange UI or API._`,
             { parse_mode: 'Markdown' }
         );
     });
 
-    // ── Main message handler ───────────────────────────────────────────────────
+    // ── /stopdashboard ────────────────────────────────────────────────────────
+    bot.command('stopdashboard', (ctx) => {
+        const chatId = String(ctx.chat.id);
+        killdDashboard(chatId);
+        ctx.reply('Dashboard stopped. Use /dashboard to restart.');
+    });
+
+    // ── Main NL message handler ───────────────────────────────────────────────
     bot.on('text', async (ctx) => {
         const userText = ctx.message.text;
         if (userText.startsWith('/')) return;
 
-        const thinkingMsg = await ctx.reply('🧠 Claude AI is analyzing your intent...');
         const chatId = String(ctx.chat.id);
+        const thinkingMsg = await ctx.reply('_Parsing intent via Claude AI..._', { parse_mode: 'Markdown' });
 
         try {
-            // ── STEP 1: Parse intent via Claude ──────────────────────────────────
+            // Step 1: Parse intent
             const intent = await parseIntent(userText);
 
             if (intent.error) {
                 await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
                 return ctx.reply(
-                    `❌ *Could not parse intent.*\n\n${intent.error}\n\nPlease try again with a clearer instruction.`,
+                    `*Parse Error:* ${intent.error}\n\nTry: "ETH grid 2800-3200 20 grids $1000"`,
                     { parse_mode: 'Markdown' }
                 );
             }
 
-            // ── STEP 2: Route by strategy ─────────────────────────────────────
             const strategy = intent.strategy || 'simple';
 
-            // ── GRID BOT STRATEGY ─────────────────────────────────────────────
+            // ── GRID STRATEGY ─────────────────────────────────────────────────
             if (strategy === 'grid') {
                 await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
 
-                // Show parsed intent immediately
                 await ctx.reply(
-                    `🧠 *Claude AI Parsed Intent:*\n` +
-                    `\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n\n` +
-                    `⚙️ *Initializing Hyperliquid Grid Bot...*\n` +
-                    `Fetching mark price and placing ${intent.grid_count || '?'} grid orders. This may take up to 30 seconds.`,
+                    `*Intent Parsed:*\n\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
+                    `Placing ${intent.grid_count || '?'} grid orders on Hyperliquid...`,
                     { parse_mode: 'Markdown' }
                 );
 
-                // Dynamically import grid module (avoids loading SDK if not needed)
                 const { runGridBot } = await import('./strategies/grid.js');
                 const result = await runGridBot(intent, chatId);
 
                 if (result.success) {
-                    // Store active session in memory
+                    // Store grid session
                     activeGridSessions.set(chatId, { asset: intent.asset, stats: result.stats });
                     await ctx.reply(result.summary, { parse_mode: 'Markdown' });
+
+                    // Auto-launch dashboard after successful grid setup
+                    await ctx.reply(
+                        `_Launching live dashboard for ${intent.asset}/USDC..._`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    await startDashboard(bot, chatId, {
+                        asset: result.stats.asset,
+                        gridCount: result.stats.gridCount,
+                        totalUsdc: result.stats.totalUsdc,
+                        lowerPrice: result.stats.lowerPrice,
+                        upperPrice: result.stats.upperPrice,
+                    });
                 } else {
                     await ctx.reply(result.error, { parse_mode: 'Markdown' });
                 }
@@ -159,44 +208,43 @@ export function startBot() {
             if (!action || !asset || !amount || !condition) {
                 await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
                 return ctx.reply(
-                    `⚠️ *Incomplete Intent Detected.*\n\nI need: action, asset, amount, and condition.\n\n` +
-                    `Example: "Buy $100 of ETH if it drops 5%"\n` +
-                    `Example (grid): "ETH 그리드봇 2800-3200달러 20개 1000달러"`,
+                    `*Incomplete intent.* Provide: action, asset, amount, condition.\n` +
+                    `Example: "Buy $100 of ETH if drops 5%"`,
                     { parse_mode: 'Markdown' }
                 );
             }
 
             const { tradeId, summary } = executeMockTrade(chatId, intent);
-
             await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
 
             await ctx.reply(
-                `✅ *AIGENT Configured!*\n\n` +
-                `🤖 *Parsed Intent (Claude AI):*\n` +
-                `\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n\n` +
-                `🚀 *Mock Trade Executed:*\n${summary}\n\n` +
-                `_Use /history to view all trades._`,
+                `*Trade Configured [#${tradeId}]*\n` +
+                `\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
+                `${summary}`,
                 { parse_mode: 'Markdown' }
             );
 
         } catch (err) {
-            console.error('[BOT] Error handling message:', err);
+            console.error('[BOT] Unhandled error:', err);
             await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-            ctx.reply(
-                `❌ *Unexpected Error*\n\n\`${err.message || 'Unknown error'}\`\n\nPlease try again later.`,
-                { parse_mode: 'Markdown' }
-            );
+            ctx.reply(`*Error:* \`${err.message || 'Unknown error'}\``, { parse_mode: 'Markdown' });
         }
     });
 
-    // ── Launch with auto-retry on 409 conflict ────────────────────────────────
+    // ── Log active sessions periodically (opt) ────────────────────────────────
+    setInterval(() => {
+        const count = getActiveSessions();
+        if (count > 0) console.log(`[BOT] Active dashboard sessions: ${count}`);
+    }, 300_000); // every 5 min
+
+    // ── Launch ────────────────────────────────────────────────────────────────
     const launch = async (retries = 10) => {
         try {
             await bot.launch({ dropPendingUpdates: true });
-            console.log('🤖 AIGENT Telegram bot started successfully.');
+            console.log('AIGENT bot started. Dashboard engine active.');
         } catch (err) {
             if (err.response?.error_code === 409 && retries > 0) {
-                console.log(`⏳ Telegram 409 conflict — waiting 10s and retrying... (${retries} left)`);
+                console.log(`Telegram 409 conflict — retrying in 10s... (${retries} left)`);
                 await new Promise((r) => setTimeout(r, 10000));
                 return launch(retries - 1);
             }
@@ -205,7 +253,7 @@ export function startBot() {
     };
 
     launch().catch((err) => {
-        console.error('❌ Bot failed to start:', err.message);
+        console.error('Bot failed to start:', err.message);
         process.exit(1);
     });
 
