@@ -171,15 +171,28 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
     // ── Step 3: Approve bridge (ethers signer — signed tx bypasses WAF) ────────
     onProgress('✍️ Signing Approval transaction (1/2)...');
 
+    // ── Timeout helper — prevents tx.wait() from hanging indefinitely ─────────
+    const TX_TIMEOUT_MS = 30_000;
+    const withTimeout = (promise, label) =>
+        Promise.race([
+            promise,
+            new Promise((_, rej) =>
+                setTimeout(() => rej(new Error(`TIMEOUT:${label}`)), TX_TIMEOUT_MS)
+            ),
+        ]);
+
     try {
         const currentAllowance = await getAllowance(address);
 
         let approveTxHash = '(already approved)';
         if (currentAllowance.lt(rawDepositAmt)) {
             const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, wallet);
-            const approveTx = await usdc.approve(HL_BRIDGE_ADDRESS, rawDepositAmt, { gasLimit: 100_000 });
+            const approveTx = await withTimeout(
+                usdc.approve(HL_BRIDGE_ADDRESS, rawDepositAmt, { gasLimit: 2_000_000 }),
+                'approve_send'
+            );
             onProgress('⏳ Approval tx broadcast — waiting for confirmation...');
-            const rec = await approveTx.wait(1);
+            const rec = await withTimeout(approveTx.wait(1), 'approve_wait');
             if (rec.status !== 1) return { success: false, error: 'Approval transaction reverted.' };
             approveTxHash = approveTx.hash;
             onProgress(`✅ Approved! Tx: ${approveTxHash.slice(0, 10)}...`);
@@ -191,9 +204,12 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
         onProgress('🚀 Signing Deposit transaction (2/2)...');
 
         const bridge = new ethers.Contract(HL_BRIDGE_ADDRESS, BRIDGE_ABI, wallet);
-        const depositTx = await bridge.deposit(rawDepositAmt.toNumber(), { gasLimit: 200_000 });
+        const depositTx = await withTimeout(
+            bridge.deposit(rawDepositAmt.toNumber(), { gasLimit: 2_000_000 }),
+            'deposit_send'
+        );
         onProgress('⏳ Deposit tx broadcast — waiting for confirmation...');
-        const depositRec = await depositTx.wait(1);
+        const depositRec = await withTimeout(depositTx.wait(1), 'deposit_wait');
 
         if (depositRec.status !== 1) {
             return { success: false, error: 'Deposit transaction reverted.', approveTxHash };
@@ -209,6 +225,12 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
     } catch (err) {
         console.error('[HLBRIDGE] Tx failed:', err.message);
         const msg = (err?.message || '').toLowerCase();
+        if (msg.startsWith('timeout:')) {
+            return {
+                success: false,
+                error: '❌ 블록체인 네트워크 혼잡으로 송금이 지연되었습니다.\n\n아비트럼 네트워크 응답이 30초를 초과했습니다. 귀하의 자금은 안전하며, 잠시 후 다시 시도해주세요.',
+            };
+        }
         if (msg.includes('insufficient funds') || msg.includes('intrinsic gas') ||
             msg.includes('insufficient_funds')) {
             return {
