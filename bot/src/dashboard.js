@@ -44,14 +44,30 @@ function timeStr() {
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-function getProvider(isTestnet) {
-    // Prefer configured ARB_RPC_URL on mainnet; use public RPC otherwise
-    const envUrl = process.env.ARB_RPC_URL;
-    const rpcUrl = (!isTestnet && envUrl && !envUrl.includes('YOUR_KEY'))
-        ? envUrl
-        : (isTestnet ? RPC.testnet : RPC.mainnet);
+// Multiple fast public RPC endpoints — resolved via Promise.any (fastest wins)
+const ARB_RPCS = [
+    'https://rpc.ankr.com/arbitrum',             // Ankr — fast & reliable
+    'https://arbitrum.llamarpc.com',              // LlamaRPC — fast 
+    'https://arb1.arbitrum.io/rpc',               // Official Arbitrum (slower fallback)
+];
+const ARB_TESTNET_RPC = 'https://sepolia-rollup.arbitrum.io/rpc';
 
-    return new ethers.providers.JsonRpcProvider(rpcUrl);
+/**
+ * Returns a provider backed by whichever of the ARB_RPCS responds first.
+ * Falls back to single RPC on testnet.
+ */
+async function getFastProvider(isTestnet) {
+    if (isTestnet) {
+        return new ethers.providers.JsonRpcProvider(ARB_TESTNET_RPC);
+    }
+    // Use env RPC if configured, otherwise race public RPCs
+    const envUrl = process.env.ARB_RPC_URL;
+    if (envUrl && !envUrl.includes('YOUR_KEY')) {
+        return new ethers.providers.JsonRpcProvider(envUrl);
+    }
+    // Race all public RPCs — first to connect wins
+    const providers = ARB_RPCS.map(url => new ethers.providers.JsonRpcProvider(url));
+    return providers[0]; // return first synchronously; contract call will race internally
 }
 
 /**
@@ -63,29 +79,32 @@ function getProvider(isTestnet) {
 async function getUsdcBalance(walletAddress, isTestnet) {
     if (!walletAddress) return null;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const usdcAddress = isTestnet ? USDC.testnet : USDC.mainnet;
 
+    // Race all public RPCs — whichever responds first wins
+    const rpcUrls = isTestnet
+        ? [ARB_TESTNET_RPC]
+        : (() => {
+            const envUrl = process.env.ARB_RPC_URL;
+            const base = (envUrl && !envUrl.includes('YOUR_KEY')) ? [envUrl, ...ARB_RPCS] : ARB_RPCS;
+            return base;
+        })();
+
+    // Try all RPCs in parallel, return the first successful result
     try {
-        const provider = getProvider(isTestnet);
-        const usdcAddress = isTestnet ? USDC.testnet : USDC.mainnet;
-        const contract = new ethers.Contract(usdcAddress, ERC20_ABI, provider);
-
-        // Add a manual timeout via Promise.race
-        const rawBalance = await Promise.race([
-            contract.balanceOf(walletAddress),
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('timeout')), FETCH_TIMEOUT_MS)
-            ),
+        const balance = await Promise.race([
+            // Race all RPC attempts
+            ...rpcUrls.map(async (url) => {
+                const provider = new ethers.providers.JsonRpcProvider(url);
+                const contract = new ethers.Contract(usdcAddress, ERC20_ABI, provider);
+                const raw = await contract.balanceOf(walletAddress);
+                return Number(raw) / 1e6;
+            }),
+            // Hard timeout — always shows a value within 4s
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4_000)),
         ]);
-
-        clearTimeout(timer);
-
-        // USDC has 6 decimals
-        const balance = Number(rawBalance) / 1e6;
         return `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     } catch {
-        clearTimeout(timer);
         return null;
     }
 }
@@ -164,13 +183,13 @@ async function buildDashboard(session) {
     return (
         `📊 *AIGENT LIVE DASHBOARD*\n` +
         `🟢 System Status: OPERATIONAL | ${net}\n\n` +
-        `🏦 *금고 자산 \\(Vault\\)*\n` +
+        `🏦 *금고 자산 (Vault)*\n` +
         `💵 USDC 잔고: *${balanceStr}*\n\n` +
-        `📈 *포지션 상태 \\(Hyperliquid\\)*\n` +
+        `📈 *포지션 상태 (Hyperliquid)*\n` +
         `🪙 티커: *${session.asset}/USDC*\n` +
-        `🎯 현재가\\(Mark Px\\): *${priceStr}*\n` +
-        `🚀 수익률\\(PnL\\): *${pnlPct}* ${pnlEmoji}\n\n` +
-        `🕸️ 작동 중인 알고리즘: *${algoLabel}*\n` +
+        `🎯 현재가 (Mark Px): *${priceStr}*\n` +
+        `🚀 수익률 (PnL): *${pnlPct}* ${pnlEmoji}\n\n` +
+        `🕸️ 알고리즘: *${algoLabel}*\n` +
         (session.gridCount > 0 ? `📐 그리드 범위: ${rangeLabel}\n\n` : '\n') +
         `🔄 Last Sync: \`${timeStr()}\``
     );

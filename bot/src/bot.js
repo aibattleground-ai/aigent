@@ -298,17 +298,17 @@ export async function startBot() {
         const userText = ctx.message.text.trim();
         if (userText.startsWith('/')) return;
 
-        // ── Exact-match keyboard button router ─────────────────────────────────
-        // Build a Set of all possible button texts for every supported language
-        // so they NEVER leak into the Claude NLP parser regardless of ordering.
-        const BUTTON_ACTIONS = [
-            { pattern: /^📊/, handler: handleDashboard },
-            { pattern: /^💸/, handler: handleWithdraw },
-            { pattern: /^⚙️/, handler: handleExportKey },
-        ];
-        for (const { pattern, handler } of BUTTON_ACTIONS) {
-            if (pattern.test(userText)) return handler(ctx);
-        }
+        // ── Absolute button-text firewall ───────────────────────────────────────
+        // Covers all 5 languages. ANY message containing these substrings is
+        // routed immediately and NEVER reaches Claude NLP.
+        const DASHBOARD_KEYWORDS = ['대시보드', 'Dashboard', 'Panel en Vivo', '실시간', 'ダッシュボード', '终端', '📊'];
+        const WITHDRAW_KEYWORDS = ['출금', 'Withdraw', 'Retirar', '提款', '出金', '💸'];
+        const SETTINGS_KEYWORDS = ['세팅', 'Settings', 'Config', '设置', '設定', '⚙'];
+
+        if (DASHBOARD_KEYWORDS.some(k => userText.includes(k))) return handleDashboard(ctx);
+        if (WITHDRAW_KEYWORDS.some(k => userText.includes(k))) return handleWithdraw(ctx);
+        if (SETTINGS_KEYWORDS.some(k => userText.includes(k))) return handleExportKey(ctx);
+
 
         const chatId = String(ctx.chat.id);
         const l = lang(chatId);
