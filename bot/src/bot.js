@@ -97,9 +97,10 @@ export async function startBot() {
         const wallet = getUserWallet(chatId);
 
         if (wallet) {
-            // Already onboarded — show wallet + bottom keyboard
+            // Already onboarded — show GIF + full welcome message again
+            await ctx.telegram.sendAnimation(chatId, ONBOARDING_GIF).catch(() => { });
             return ctx.reply(
-                t(l, 'wallet_header', { wallet }) + '\n\n📊 /dashboard   📖 /help   🌐 /language',
+                t(l, 'welcome', { wallet }),
                 { parse_mode: 'Markdown', reply_markup: replyKeyboard(l) }
             );
         }
@@ -110,6 +111,7 @@ export async function startBot() {
             reply_markup: LANG_KEYBOARD,
         });
     });
+
 
     // ── Language callback ─────────────────────────────────────────────────────
     bot.action(/^lang:(.+)$/, async (ctx) => {
