@@ -1,6 +1,5 @@
 'use client';
 import Link from 'next/link';
-import { WalletConnectButton } from './WalletConnectButton';
 import { useState, useEffect } from 'react';
 
 export function Navbar() {
@@ -14,50 +13,64 @@ export function Navbar() {
 
     return (
         <nav
-            className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${scrolled
-                    ? 'glass border-b border-white/[0.06] py-3'
-                    : 'bg-transparent py-5'
-                }`}
+            className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
+            style={{
+                background: scrolled ? 'rgba(8,8,9,0.92)' : 'transparent',
+                borderBottom: scrolled ? '1px solid rgba(255,255,255,0.06)' : '1px solid transparent',
+                backdropFilter: scrolled ? 'blur(12px)' : 'none',
+                WebkitBackdropFilter: scrolled ? 'blur(12px)' : 'none',
+                padding: '18px 0',
+            }}
         >
-            <div className="max-w-7xl mx-auto px-6 flex items-center justify-between">
-                {/* ── Logo ─────────────────────────────────────────────────────── */}
+            <div className="max-w-7xl mx-auto px-8 lg:px-16 flex items-center justify-between">
+                {/* Logo */}
                 <Link href="/" className="flex items-center gap-3 group">
-                    <div className="relative w-9 h-9">
-                        {/* Spinning ring */}
-                        <div className="absolute inset-0 rounded-xl border border-ai-cyan/30 animate-spin-slow" />
-                        <div className="absolute inset-1 rounded-lg bg-gradient-to-br from-ai-cyan/20 to-ai-purple/20 flex items-center justify-center">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                                <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#00f0ff" strokeWidth="1.5" strokeLinejoin="round" />
-                                <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00f0ff" strokeWidth="1.5" strokeLinejoin="round" />
-                            </svg>
-                        </div>
+                    <div
+                        className="w-8 h-8 cut-corner-sm flex items-center justify-center"
+                        style={{ border: '1px solid rgba(0,229,200,0.2)', background: 'rgba(0,229,200,0.06)' }}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#00e5c8" strokeWidth="1.5" strokeLinejoin="round" />
+                            <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00e5c8" strokeWidth="1.5" strokeLinejoin="round" />
+                        </svg>
                     </div>
-                    <span className="font-display font-800 text-xl text-white tracking-tight">
-                        AI<span className="text-gradient-cyan">GENT</span>
+                    <span className="font-display font-bold text-white tracking-tight">
+                        AI<span style={{ color: 'var(--accent)' }}>GENT</span>
+                    </span>
+                    <span
+                        className="font-mono-custom text-xs hidden sm:block"
+                        style={{ color: 'var(--text-400)', letterSpacing: '0.1em' }}
+                    >
+                        // PROTOCOL
                     </span>
                 </Link>
 
-                {/* ── Nav links ─────────────────────────────────────────────────── */}
+                {/* Nav links */}
                 <div className="hidden md:flex items-center gap-8">
                     {[
-                        { label: 'Features', href: '/#features' },
-                        { label: 'How It Works', href: '/#how' },
+                        { label: 'Architecture', href: '/#architecture' },
+                        { label: 'Tokenomics', href: '/#tokenomics' },
+                        { label: 'Security', href: '/#security' },
+                        { label: 'Roadmap', href: '/#roadmap' },
                         { label: 'Dashboard', href: '/dashboard' },
                     ].map((item) => (
                         <Link
                             key={item.href}
                             href={item.href}
-                            className="text-sm text-white/50 hover:text-white transition-colors duration-200 tracking-wide"
+                            className="font-mono-custom text-xs tracking-widest uppercase transition-colors duration-200"
+                            style={{ color: 'var(--text-400)' }}
+                            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-200)')}
+                            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-400)')}
                         >
                             {item.label}
                         </Link>
                     ))}
                 </div>
 
-                {/* ── CTA ──────────────────────────────────────────────────────── */}
-                <div className="flex items-center gap-3">
-                    <WalletConnectButton />
-                </div>
+                {/* CTA */}
+                <button className="btn-primary" style={{ padding: '10px 22px', fontSize: '10px' }}>
+                    Stake to Access Beta →
+                </button>
             </div>
         </nav>
     );

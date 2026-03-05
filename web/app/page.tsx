@@ -1,313 +1,360 @@
 /**
- * AIGENT — Institutional Web3 AI Liquidity Protocol
- * Landing Page — Full Overhaul
+ * AIGENT — Institutional Landing Page
+ * Ultra-Premium Quant / DeepTech Aesthetic
  */
 import Link from 'next/link';
 import { Navbar } from '@/components/Navbar';
 
-/* ─── Data ─────────────────────────────────────────────────── */
+/* ─── Data ─────────────────────────────────────────────────────── */
 
 const architectureLayers = [
     {
-        id: '01',
+        id: 'L-01',
         label: 'Intent Parsing Layer',
-        color: 'cyan',
         modules: [
-            { name: 'Neural Sentiment Analysis Engine', desc: 'A transformer-based language model fine-tuned on 47M on-chain transaction annotations, liquidity event logs, and cross-market sentiment signals. Achieves 94.3% intent classification accuracy across 180+ distinct trade strategy archetypes.' },
-            { name: 'ZK-Intent Verification Module', desc: 'Zero-Knowledge Intent Verification (ZK-Intent™) leverages zk-SNARK proofs to cryptographically commit user trade intents on-chain prior to execution, eliminating front-running vectors and preserving full intent confidentiality from third-party observers.' },
+            {
+                name: 'Neural Sentiment Analysis Engine',
+                tag: 'NLP · TRANSFORMER',
+                desc: 'Transformer-based language model fine-tuned on 47M on-chain transaction annotations, cross-market sentiment signals, and regulatory corpus data. Achieves 94.3% intent classification accuracy across 180+ distinct trade strategy archetypes with sub-280ms median inference latency.',
+            },
+            {
+                name: 'ZK-Intent Verification (ZK-Intent™)',
+                tag: 'zk-SNARKs · GROTH16',
+                desc: 'Zero-Knowledge Intent Verification leverages zk-SNARK proofs to cryptographically commit user trade intents on-chain prior to execution. Eliminates front-running vectors and preserves full intent confidentiality from third-party observers, including validator nodes.',
+            },
         ],
     },
     {
-        id: '02',
+        id: 'L-02',
         label: 'Routing & Execution Layer',
-        color: 'purple',
         modules: [
-            { name: 'MEV-Protected Execution Router', desc: 'Proprietary transaction bundling and private mempool relay infrastructure that shields executed orders from Miner/Validator Extractable Value (MEV) attacks. Integrates with Flashbots Protect, bloXroute, and private relay infrastructure across EVM-compatible networks.' },
-            { name: 'Cross-Chain Liquidity Aggregator', desc: 'Real-time aggregation across 14+ decentralized exchanges and 6 blockchain networks, executing optimal split-routing algorithms (Dijkstra-variant with price-impact weighting) to minimize slippage while maximizing throughput for institutional-size order flows.' },
+            {
+                name: 'MEV-Protected Execution Router',
+                tag: 'FLASHBOTS · bloXroute',
+                desc: 'Proprietary transaction bundling and private mempool relay infrastructure shielding executed orders from Miner/Validator Extractable Value (MEV) attacks. Integrates with Flashbots Protect, bloXroute, and private relay infrastructure across 14 EVM-compatible networks.',
+            },
+            {
+                name: 'Cross-Chain Liquidity Aggregator',
+                tag: 'SPLIT-ROUTING · 14 DEXs',
+                desc: 'Real-time aggregation across 14+ decentralized exchanges executing optimal split-routing algorithms (Dijkstra-variant, price-impact weighted) to minimize slippage while maximizing throughput for institutional-size order flows with atomic settlement guarantees.',
+            },
         ],
     },
     {
-        id: '03',
+        id: 'L-03',
         label: 'Risk & Settlement Layer',
-        color: 'pink',
         modules: [
-            { name: 'Adaptive Risk Scoring Matrix', desc: 'Monte Carlo simulation engine computing real-time Value-at-Risk (VaR) and Conditional Value-at-Risk (CVaR) for every pending trade intent. Dynamic position sizing constraints are enforced at the smart contract level through on-chain risk parameter oracles.' },
-            { name: 'Atomic Settlement Engine', desc: 'All trade settlements are executed atomically via audited smart contracts, ensuring that partial fills are automatically refunded and that no counterparty risk is introduced at any stage of the execution pipeline. Settlement finality is confirmed within a single block proposition cycle.' },
+            {
+                name: 'Adaptive Risk Scoring Matrix',
+                tag: 'VaR · CVaR · MONTE CARLO',
+                desc: 'Monte Carlo simulation engine computing real-time Value-at-Risk (VaR) and Conditional Value-at-Risk (CVaR) for every pending trade intent. Dynamic position sizing constraints enforced at smart contract level through on-chain risk parameter oracles updated every 12 seconds.',
+            },
+            {
+                name: 'Atomic Settlement Engine',
+                tag: 'ERC-4337 · SINGLE BLOCK',
+                desc: 'All trade settlements execute atomically via audited smart contracts. Partial fills are automatically refunded. No counterparty risk is introduced at any pipeline stage. Settlement finality confirmed within a single block proposition cycle — no optimistic assumptions.',
+            },
         ],
     },
 ];
 
-const tokenomicsUtilities = [
-    { icon: '🔐', title: 'Governance Rights', desc: 'Token holders participate in on-chain protocol governance, voting on risk parameter updates, supported chain integrations, fee tier adjustments, and AI model upgrade cycles through a time-weighted, stake-proportional voting mechanism.' },
-    { icon: '⚡', title: 'Execution Fee Discounts', desc: 'Stakers receive tiered protocol fee rebates of up to 70%, calculated as a continuous function of staked token quantity divided by the exponentially weighted moving average (EWMA) of total protocol TVL.' },
-    { icon: '🔥', title: 'Buyback & Burn Mechanism', desc: '30% of all gross trading revenue generated by all active AIGENT agents is directed to an on-chain treasury smart contract that autonomously executes market buybacks and permanently burns acquired tokens, creating a deflationary supply curve correlated with protocol usage.' },
-    { icon: '🤖', title: 'AI Model Tier Unlocks', desc: 'Token staking quantity gates access to progressively more capable AI inference models within the AIGENT execution stack. Higher-tier stakers gain exclusive access to Claude Opus, extended context windows, and priority queue scheduling.' },
-    { icon: '💎', title: 'Revenue Sharing', desc: 'The remaining 70% of protocol revenue is distributed pro-rata to long-term stakers (minimum 90-day lock), converting AIGENT from a pure utility token into a yield-bearing protocol-native asset with real, verifiable on-chain cash flows.' },
-    { icon: '🌐', title: 'Node Operator Collateral', desc: 'In Phase 3, $AIGENT serves as the mandatory collateral asset for permissionless AI inference node operators, cryptoeconomically aligning node reliability with token value through uptime-based slashing and performance-based reward distribution.' },
+const revenueAllocation = [
+    { pct: '30%', label: 'Buyback & Burn', desc: 'Permanently acquired from open market and burned via deflationary treasury contract. Supply reduction is monotonically correlated with protocol volume.', icon: '▼' },
+    { pct: '40%', label: 'Staker Yield', desc: 'Distributed pro-rata to $AIGENT stakers maintaining ≥90-day lock commitments. Fully on-chain audit trail via Merkle-proof distribution.', icon: '◆' },
+    { pct: '30%', label: 'Protocol Reserve', desc: 'Multi-sig treasury allocation for R&D, security audits, ecosystem grants, and AI model infrastructure. Subject to DAO governance approval.', icon: '■' },
 ];
 
 const stakingTiers = [
-    { tier: 'Observer', amount: '500', color: 'white/40', glow: '', model: 'Claude Haiku', perks: ['Basic intent parsing', '5 concurrent agents', 'Standard execution queue', 'Community governance'] },
-    { tier: 'Operator', amount: '5,000', color: 'ai-cyan', glow: 'glow-cyan', model: 'Claude Sonnet', perks: ['Advanced strategy library', '25 concurrent agents', 'Priority execution queue', '30% fee discount', 'Enhanced risk analytics'] },
-    { tier: 'Architect', amount: '25,000', color: 'ai-purple', glow: 'glow-purple', model: 'Claude Opus', perks: ['Full inference access', 'Unlimited agents', 'Private mempool access', '70% fee discount', 'Real-time VaR dashboard', 'Governance multiplier ×3'] },
-    { tier: 'Sovereign', amount: '100,000', color: 'ai-pink', glow: '', model: 'Claude Opus (Dedicated)', perks: ['Dedicated inference cluster', 'Custom strategy fine-tuning', 'Direct protocol API access', 'Institutional SLA', 'Treasury advisory seat', 'Early protocol access'] },
+    {
+        tier: 'OBSERVER',
+        amount: '500',
+        model: 'Claude Haiku',
+        perks: ['Basic intent parsing', '5 concurrent agents', 'Standard execution queue', 'Community governance'],
+    },
+    {
+        tier: 'OPERATOR',
+        amount: '5,000',
+        model: 'Claude Sonnet',
+        perks: ['Advanced strategy library', '25 concurrent agents', 'Priority execution queue', '30% fee discount', 'Enhanced risk analytics'],
+        featured: false,
+    },
+    {
+        tier: 'ARCHITECT',
+        amount: '25,000',
+        model: 'Claude Opus',
+        perks: ['Full inference access', 'Unlimited agents', 'Private mempool access', '70% fee discount', 'Real-time VaR dashboard', 'Governance ×3'],
+        featured: true,
+    },
+    {
+        tier: 'SOVEREIGN',
+        amount: '100,000',
+        model: 'Claude Opus — Dedicated',
+        perks: ['Dedicated inference cluster', 'Custom fine-tuning', 'Direct protocol API', 'Institutional SLA', 'Treasury advisory seat', 'Early protocol access'],
+    },
 ];
 
 const securityItems = [
-    { label: 'Non-Custodial Architecture', icon: '🔑', desc: 'AIGENT operates exclusively through audited, non-custodial smart contracts. At no point does the protocol take custody of user assets. All trade authorizations are scoped, revocable ERC-4337 session keys with fine-grained permission constraints.' },
-    { label: 'Multi-Signature Treasury', icon: '🛡', desc: 'Protocol treasury assets and upgrade authority are governed by a 7-of-11 multi-signature scheme, distributed across geographically separated hardware security modules (HSMs) controlled by independent key custodians.' },
-    { label: 'Real-Time On-Chain Risk Management', icon: '📡', desc: 'All active agent positions are subject to continuous, block-level risk scoring published via Chainlink oracle aggregators. Breaching configurable VaR thresholds triggers automatic de-risking routines embedded at the contract execution layer.' },
-    { label: 'Formal Verification', icon: '✅', desc: 'Core smart contract logic has undergone formal verification using the K Framework, producing machine-checkable proofs of correctness for all critical execution paths, including ERC-20 transfer invariants and reentrancy protections.' },
-    { label: 'Bug Bounty Program', icon: '🐛', desc: 'An ongoing, Immunefi-hosted bug bounty program offers up to $1,000,000 USDC for critical vulnerability disclosures, demonstrating the protocol\'s commitment to maintaining the highest security posture across all attack surfaces.' },
-    { label: 'Insurance Reserve Fund', icon: '🏦', desc: 'A protocol-controlled insurance fund, seeded at 5% of all revenue, provides first-loss coverage against smart contract exploits, oracle manipulation events, and systemic liquidation cascades, protecting LPs and stakers alike.' },
+    { label: 'Non-Custodial Smart Contracts', code: 'ERC-4337', desc: 'All authorizations are scoped, revocable session keys. AIGENT takes zero custody of user assets at any point in the execution pipeline.' },
+    { label: 'Multi-Sig Treasury', code: '7-of-11', desc: 'Protocol treasury and upgrade authority governed by 7-of-11 multi-signature scheme across geographically separated hardware security modules (HSMs).' },
+    { label: 'Real-Time On-Chain Risk Management', code: 'CHAINLINK ORACLES', desc: 'Continuous block-level risk scoring published via Chainlink aggregators. VaR threshold breaches trigger automatic de-risking routines at contract level.' },
+    { label: 'Formal Verification', code: 'K FRAMEWORK', desc: 'Core smart contract logic formally verified using the K Framework — machine-checkable proofs of correctness for all critical execution paths.' },
+    { label: 'Immunefi Bug Bounty', code: '$1,000,000 USDC', desc: 'Ongoing bug bounty program offering up to $1M USDC for critical vulnerability disclosures. Demonstrates commitment to highest security posture.' },
+    { label: 'Insurance Reserve Fund', code: '5% REVENUE', desc: 'Protocol-controlled insurance fund seeded at 5% of all revenue, providing first-loss coverage against exploits, oracle manipulation, and liquidation cascades.' },
 ];
 
 const roadmapPhases = [
     {
-        phase: 'Phase I',
+        phase: 'PHASE I',
         title: 'Foundation Protocol',
         period: 'Q1–Q2 2026',
-        status: 'Live',
-        color: 'ai-cyan',
+        status: 'LIVE',
         items: [
             'Intent-to-trade parsing via Claude AI inference cluster',
-            'EVM-compatible non-custodial execution engine (Ethereum, Arbitrum, Base)',
+            'EVM non-custodial execution engine (Ethereum, Arbitrum, Base)',
             'ZK-Intent proof generation & on-chain commitment',
-            'MEV-Protected Execution Router v1 deployment',
-            '$AIGENT TGE (Token Generation Event) & initial staking module',
-            'Tier 1–2 staking VIP system and governance contract deployment',
-            'Third-party security audit completion (Trail of Bits, Spearbit)',
+            'MEV-Protected Execution Router v1',
+            '$AIGENT TGE & initial staking module',
+            'Trail of Bits + Spearbit security audit',
         ],
     },
     {
-        phase: 'Phase II',
+        phase: 'PHASE II',
         title: 'Cross-Chain AI Arbitrage',
         period: 'Q3–Q4 2026',
-        status: 'Upcoming',
-        color: 'ai-purple',
+        status: 'UPCOMING',
         items: [
-            'Cross-chain liquidity routing: Solana, Sui, Cosmos IBC integration',
-            'Neural Sentiment Analysis Engine v2 with real-time news/social signal ingestion',
-            'AI-driven cross-chain arbitrage detection and atomic execution',
-            'Institutional API gateway (FIX protocol-compatible) with sub-100ms SLA',
-            'Buyback & Burn smart contract treasury deployment (30% revenue allocation)',
-            'Adaptive Risk Scoring Matrix integration with Chainlink data streams',
-            'Tier 3–4 staking unlock (Claude Opus access)',
+            'Cross-chain routing: Solana, Sui, Cosmos IBC integration',
+            'Neural Sentiment Engine v2 with social/news signal ingestion',
+            'AI-driven cross-chain arbitrage with atomic execution',
+            'Institutional API gateway (FIX-compatible, sub-100ms SLA)',
+            'Buyback & Burn treasury contract deployment',
+            'Tier 3–4 staking unlock — Claude Opus access',
         ],
     },
     {
-        phase: 'Phase III',
+        phase: 'PHASE III',
         title: 'Decentralized AI Node Network',
         period: 'Q1–Q2 2027',
-        status: 'Planned',
-        color: 'ai-pink',
+        status: 'PLANNED',
         items: [
-            'Permissionless AI inference node operator onboarding ($AIGENT collateral)',
-            'Distributed model serving infrastructure with verifiable computation proofs',
-            'On-chain model registry with slashing conditions for inference failure',
-            'Node operator staking, reward, and uptime-based penalty framework',
-            'Cross-chain AI oracle network sourcing real-time alpha signals',
-            'DAO-controlled model versioning and upgrade governance mechanism',
+            'Permissionless AI inference node onboarding ($AIGENT collateral)',
+            'Distributed model serving with verifiable computation proofs',
+            'On-chain model registry + slashing for inference failure',
+            'Cross-chain AI oracle network for real-time alpha signals',
+            'DAO-controlled model versioning and upgrade governance',
         ],
     },
     {
-        phase: 'Phase IV',
+        phase: 'PHASE IV',
         title: 'Sovereign AI Financial Ecosystem',
         period: 'Q3 2027+',
-        status: 'Vision',
-        color: 'white/30',
+        status: 'VISION',
         items: [
-            'AIGENT L2 rollup: purpose-built EVM-equivalent chain for AI-native DeFi',
+            'AIGENT L2 rollup — purpose-built EVM chain for AI-native DeFi',
             'AI-managed on-chain hedge fund with tokenized LP shares',
-            'Institutional prime brokerage partnerships and regulated custody integration',
-            'Global AI talent DAO: incentivized open-source model research grants',
+            'Institutional prime brokerage partnerships + regulated custody',
             'Fully autonomous AI treasury management for partner protocols',
-            'Cross-protocol strategy marketplace with revenue-sharing composability',
+            'Cross-protocol strategy marketplace with composable revenue-sharing',
         ],
     },
 ];
 
-const marqueeItems = ['Neural AI Engine', 'ZK-Intent Verified', 'MEV Protected', 'Non-Custodial', 'Cross-Chain', '$AIGENT Token', 'Buyback & Burn', 'Formal Verification', 'Institutional Grade', 'Claude Opus Tier'];
+const marqueeItems = [
+    'Neural Sentiment Engine', 'ZK-Intent Verified', 'MEV-Protected', 'Non-Custodial',
+    '14-Chain Support', '$AIGENT Protocol', 'Buyback & Burn', 'Formal Verification',
+    'Institutional Grade', 'Claude Opus Access', 'Monte Carlo VaR', 'Atomic Settlement',
+];
 
-/* ─── Component ─────────────────────────────────────────────── */
+/* ─── Component ───────────────────────────────────────────────── */
 
 export default function HomePage() {
     return (
-        <main className="min-h-screen bg-ai-bg overflow-hidden">
+        <main className="min-h-screen" style={{ background: 'var(--bg)' }}>
             <Navbar />
 
-            {/* ══════════════════════════════════════════════════════════════ */}
-            {/*  SECTION 1 — HERO                                             */}
-            {/* ══════════════════════════════════════════════════════════════ */}
-            <section className="relative min-h-screen flex items-center justify-center px-6 pt-24 pb-16">
-                {/* Animated grid */}
-                <div className="absolute inset-0 grid-animated opacity-60 pointer-events-none" />
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/*  SECTION 1 — HERO                                           */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <section className="relative min-h-screen flex flex-col justify-center px-8 lg:px-16 pt-28 pb-20 overflow-hidden">
+                {/* Micro-grid background */}
+                <div className="absolute inset-0 micro-grid grid-drift opacity-100 pointer-events-none" />
+                {/* Very subtle radial vignette */}
+                <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse 80% 60% at 50% 50%, transparent 30%, var(--bg) 100%)' }} />
 
-                {/* Radial orbs */}
-                <div className="absolute top-1/4 left-1/4 w-[700px] h-[700px] bg-ai-cyan/5 rounded-full blur-[140px] animate-orb-pulse pointer-events-none" />
-                <div className="absolute bottom-1/4 right-1/4 w-[600px] h-[600px] bg-ai-purple/5 rounded-full blur-[120px] animate-orb-pulse pointer-events-none" style={{ animationDelay: '2s' }} />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-ai-pink/3 rounded-full blur-[100px] pointer-events-none" />
+                <div className="max-w-7xl mx-auto w-full relative z-10">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
 
-                {/* Floating geometric decorations */}
-                <div className="absolute top-32 left-12 w-28 h-28 border border-ai-cyan/10 rounded-2xl rotate-12 animate-float pointer-events-none" />
-                <div className="absolute top-48 right-16 w-20 h-20 border border-ai-purple/10 rounded-xl -rotate-6 animate-float pointer-events-none" style={{ animationDelay: '2s' }} />
-                <div className="absolute bottom-40 left-20 w-14 h-14 border border-ai-pink/10 rounded-lg rotate-45 animate-float pointer-events-none" style={{ animationDelay: '4s' }} />
-                <div className="absolute bottom-56 right-32 w-10 h-10 border border-ai-cyan/8 rounded-full animate-float pointer-events-none" style={{ animationDelay: '1s' }} />
-
-                <div className="max-w-5xl mx-auto text-center relative z-10">
-                    {/* Live badge */}
-                    <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full glass border border-ai-cyan/20 text-xs font-semibold text-ai-cyan mb-10 animate-fade-in tracking-widest uppercase">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-ai-cyan opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-ai-cyan" />
-                        </span>
-                        Beta Access · Powered by Anthropic Claude · ZK-Intent Verified
-                    </div>
-
-                    {/* Headline */}
-                    <h1 className="font-display text-5xl md:text-7xl lg:text-8xl font-black text-white leading-[0.92] tracking-tight mb-6 animate-slide-up">
-                        The First{' '}
-                        <span className="text-gradient-cyan">Intent-Centric</span>
-                        <br />
-                        AI Liquidity Protocol
-                    </h1>
-
-                    <p className="text-lg md:text-xl text-white/40 max-w-3xl mx-auto mb-5 leading-relaxed animate-fade-in" style={{ animationDelay: '0.15s' }}>
-                        AIGENT is a cryptographically verifiable, non-custodial AI execution layer that translates natural language trade intents into MEV-protected, cross-chain liquidity operations — autonomously, at institutional grade.
-                    </p>
-                    <p className="text-sm text-white/25 max-w-2xl mx-auto mb-12 leading-relaxed animate-fade-in font-mono" style={{ animationDelay: '0.2s' }}>
-                        Neural Sentiment Analysis · ZK-Intent Proofs · MEV-Protected Routing · $AIGENT Tokenomics
-                    </p>
-
-                    {/* CTAs */}
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4 animate-slide-up mb-8" style={{ animationDelay: '0.3s' }}>
-                        <button className="btn-shimmer px-9 py-4 rounded-2xl font-bold text-ai-bg text-base tracking-wide">
-                            Stake to Access Beta →
-                        </button>
-                        <button className="px-9 py-4 rounded-2xl font-semibold text-white/70 text-base glass hover:text-white hover:border-white/20 transition-all duration-300 border border-white/[0.08]">
-                            Read Technical Litepaper ↗
-                        </button>
-                    </div>
-
-                    {/* Sub-metrics row */}
-                    <div className="flex flex-wrap items-center justify-center gap-8 mt-4 animate-fade-in" style={{ animationDelay: '0.4s' }}>
-                        {[
-                            { v: '$284M+', l: 'Total Volume Processed' },
-                            { v: '14', l: 'Chains Supported' },
-                            { v: '94.3%', l: 'Intent Classification Accuracy' },
-                            { v: '< 280ms', l: 'Median Execution Latency' },
-                        ].map((m, i) => (
-                            <div key={i} className="text-center">
-                                <div className="font-display font-black text-2xl text-white glow-text-cyan">{m.v}</div>
-                                <div className="text-xs text-white/30 tracking-widest uppercase mt-1">{m.l}</div>
+                        {/* Left column — copy */}
+                        <div>
+                            {/* System label */}
+                            <div className="flex items-center gap-3 mb-10">
+                                <span className="inline-flex items-center gap-2 mono-label" style={{ color: 'var(--accent)' }}>
+                                    <span className="relative flex h-1.5 w-1.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-none" style={{ background: 'var(--accent)', opacity: 0.7 }} />
+                                        <span className="relative inline-flex h-1.5 w-1.5" style={{ background: 'var(--accent)' }} />
+                                    </span>
+                                    AIGENT // PROTOCOL v2.4 // BETA ACCESS
+                                </span>
                             </div>
-                        ))}
-                    </div>
 
-                    {/* Architecture preview terminal */}
-                    <div className="relative mt-20 mx-auto max-w-3xl animate-fade-in" style={{ animationDelay: '0.55s' }}>
-                        <div className="absolute inset-0 bg-gradient-to-r from-ai-cyan/10 via-ai-purple/10 to-ai-pink/10 blur-3xl rounded-3xl" />
-                        <div className="relative glass rounded-2xl border border-white/[0.06] overflow-hidden">
-                            <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.05] bg-white/[0.02]">
-                                <div className="flex gap-1.5">
-                                    <div className="w-3 h-3 rounded-full bg-red-500/80" />
-                                    <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
-                                    <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                            {/* Headline */}
+                            <h1 className="font-display font-bold text-white leading-[1.0] tracking-tight mb-8" style={{ fontSize: 'clamp(2.8rem, 5vw, 5rem)' }}>
+                                The First<br />
+                                <span className="text-gradient">Intent-Centric</span><br />
+                                AI Liquidity<br />
+                                Protocol
+                            </h1>
+
+                            <p className="text-sm leading-loose mb-4" style={{ color: 'var(--text-300)', maxWidth: '42ch' }}>
+                                AIGENT is a cryptographically verifiable, non-custodial AI execution layer that translates natural language trade intents into MEV-protected, cross-chain liquidity operations — autonomously, at institutional grade.
+                            </p>
+                            <p className="font-mono-custom text-xs mb-12" style={{ color: 'var(--text-400)', letterSpacing: '0.04em' }}>
+                                Neural Sentiment Analysis · ZK-Intent Proofs · MEV-Protected Routing · $AIGENT Token Economics
+                            </p>
+
+                            {/* CTAs */}
+                            <div className="flex flex-wrap gap-4 mb-16">
+                                <button className="btn-primary">Stake to Access Beta →</button>
+                                <button className="btn-secondary">Read Technical Litepaper ↗</button>
+                            </div>
+
+                            {/* Metrics */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-0 divide-x" style={{ borderColor: 'var(--border)', border: '1px solid var(--border)' }}>
+                                {[
+                                    { v: '$284M+', l: 'Total Volume' },
+                                    { v: '14', l: 'Chains' },
+                                    { v: '94.3%', l: 'Intent Accuracy' },
+                                    { v: '<280ms', l: 'Execution' },
+                                ].map((m, i) => (
+                                    <div key={i} className="p-4 text-center" style={{ borderColor: 'var(--border)' }}>
+                                        <div className="stat-num text-xl mb-1">{m.v}</div>
+                                        <div className="mono-label" style={{ color: 'var(--text-400)' }}>{m.l}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Right column — terminal */}
+                        <div className="terminal-wrap panel cut-corner" style={{ borderColor: 'var(--border-hi)' }}>
+                            {/* Terminal header */}
+                            <div className="flex items-center justify-between px-5 py-3" style={{ borderBottom: '1px solid var(--border)', background: 'rgba(255,255,255,0.015)' }}>
+                                <div className="mono-label">aigent://intent-engine · v2.4.1</div>
+                                <div className="flex items-center gap-2 mono-label" style={{ color: 'var(--accent)' }}>
+                                    <span className="relative flex h-1.5 w-1.5">
+                                        <span className="animate-ping absolute inline-flex h-full w-full" style={{ background: 'var(--accent)', opacity: 0.7 }} />
+                                        <span className="relative inline-flex h-1.5 w-1.5" style={{ background: 'var(--accent)' }} />
+                                    </span>
+                                    LIVE
                                 </div>
-                                <span className="text-xs text-white/30 font-mono">aigent://protocol/intent-engine · v2.4.1</span>
-                                <span className="text-xs text-ai-cyan/60 font-mono">● LIVE</span>
                             </div>
-                            <div className="p-6 font-mono text-sm space-y-3">
-                                <div className="text-white/30 text-xs mb-2">// ZK-Intent parsing pipeline — block #21,847,392</div>
+
+                            {/* Terminal body */}
+                            <div className="p-6 font-mono-custom text-xs space-y-4" style={{ lineHeight: '1.7' }}>
+                                <div style={{ color: 'var(--text-400)' }}>// ZK-Intent parsing pipeline — block #21,847,392</div>
+
                                 <div className="flex items-start gap-3">
-                                    <span className="text-ai-cyan shrink-0">›</span>
-                                    <span className="text-white">{'"Allocate 15% of portfolio to ETH if RSI(14) crosses below 32 and BTC dominance exceeds 54%"'}</span>
+                                    <span style={{ color: 'var(--accent)' }}>›</span>
+                                    <span style={{ color: 'var(--text-100)' }}>
+                                        {'"Allocate 15% of portfolio to ETH if RSI(14) < 32 AND BTC dominance > 54%"'}
+                                    </span>
                                 </div>
-                                <div className="text-white/30 text-xs pl-5">⠿ Neural Sentiment Engine parsing...  [zk-proof generation: 84ms]</div>
-                                <div className="rounded-xl bg-white/[0.03] border border-white/[0.05] p-4 text-left">
-                                    <div className="text-white/30 text-xs mb-3">// Parsed ZK-Intent commitment — SNARK verified ✓</div>
-                                    <pre className="text-ai-cyan text-xs leading-relaxed">{`{
+
+                                <div style={{ color: 'var(--text-400)' }}>
+                                    ⠿ Neural Sentiment Engine parsing...&nbsp;&nbsp;[proof_gen: 84ms]
+                                </div>
+
+                                <div className="panel-accent cut-corner-sm p-4">
+                                    <div className="mb-2" style={{ color: 'var(--text-400)' }}>// Parsed ZK-Intent commitment — SNARK verified ✓</div>
+                                    <pre style={{ color: 'var(--accent)', lineHeight: '1.8' }}>{`{
   "intent_id":    "0x7f3a...c91e",
   "action":       "portfolio_rebalance",
   "asset":        "ETH",
-  "allocation":   "15%",
+  "allocation":   "0.15",
   "trigger": {
     "rsi_14":     "< 32",
-    "btc_dom":    "> 54%",
+    "btc_dom":    "> 0.54",
     "operator":   "AND"
   },
   "mev_shield":   true,
   "zk_verified":  true,
   "expires_at":   "block + 2160"
-}`}</pre>
+}`}
+                                    </pre>
                                 </div>
-                                <div className="flex items-center gap-3 text-green-400">
-                                    <span>✓</span>
-                                    <span>ZK-Intent committed on-chain. MEV-Protected Router queued. Agent monitoring 24/7.</span>
+
+                                <div style={{ color: '#4ade80', fontSize: '11px' }}>
+                                    ✓ ZK-Intent committed on-chain.&nbsp;MEV Router queued.&nbsp;Agent monitoring 24/7.
+                                </div>
+
+                                <div className="flex items-center gap-2" style={{ color: 'var(--text-400)' }}>
+                                    <span>›</span>
+                                    <span className="animate-blink" style={{ color: 'var(--accent)' }}>_</span>
                                 </div>
                             </div>
                         </div>
+
                     </div>
                 </div>
             </section>
 
-            {/* ── MARQUEE STRIP ──── */}
-            <div className="border-y border-white/[0.05] py-5 overflow-hidden">
-                <div className="flex items-center gap-16 animate-marquee whitespace-nowrap px-8">
+            {/* Divider + Marquee */}
+            <div style={{ borderTop: '1px solid var(--border)', borderBottom: '1px solid var(--border)' }} className="py-4 overflow-hidden">
+                <div className="animate-marquee">
                     {[...marqueeItems, ...marqueeItems].map((t, i) => (
-                        <span key={i} className="text-xs text-white/20 font-semibold tracking-[0.3em] uppercase shrink-0">
-                            ◆ {t}
+                        <span key={i} className="mono-label shrink-0 px-8" style={{ color: 'var(--text-400)' }}>
+              // {t}
                         </span>
                     ))}
                 </div>
             </div>
 
-            {/* ══════════════════════════════════════════════════════════════ */}
-            {/*  SECTION 2 — PROTOCOL ARCHITECTURE                           */}
-            {/* ══════════════════════════════════════════════════════════════ */}
-            <section id="architecture" className="py-36 px-6 relative">
-                <div className="absolute inset-0 hex-bg opacity-20 pointer-events-none" />
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[1px] bg-gradient-to-r from-transparent via-ai-cyan/30 to-transparent" />
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/*  SECTION 2 — PROTOCOL ARCHITECTURE                          */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <section id="architecture" className="py-40 px-8 lg:px-16 relative">
+                <div className="absolute inset-0 micro-grid-lg opacity-40 pointer-events-none" />
+                <div className="divider mb-0" />
 
                 <div className="max-w-7xl mx-auto relative z-10">
-                    <div className="text-center mb-24">
-                        <span className="text-xs font-semibold tracking-[0.35em] uppercase text-ai-cyan/60">Protocol Architecture</span>
-                        <h2 className="font-display text-4xl md:text-6xl font-black text-white mt-5 mb-6 leading-tight">
-                            Institutional-Grade<br />
-                            <span className="text-gradient-cyan">AI Execution Stack</span>
-                        </h2>
-                        <p className="text-white/40 max-w-2xl mx-auto text-base leading-relaxed">
-                            AIGENT's three-layer protocol architecture ensures cryptographic intent integrity, optimal liquidity routing, and atomic settlement — from natural language input to on-chain execution.
-                        </p>
+                    {/* Section header */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-24 pt-16">
+                        <div className="lg:col-span-1">
+                            <div className="mono-label mb-4">Section 02</div>
+                            <h2 className="font-display font-bold text-white text-4xl lg:text-5xl leading-tight">
+                                Protocol<br />Architecture
+                            </h2>
+                        </div>
+                        <div className="lg:col-span-2 flex items-end">
+                            <p style={{ color: 'var(--text-300)', maxWidth: '60ch', lineHeight: '1.85', fontSize: '14px' }}>
+                                AIGENT's three-layer protocol architecture ensures cryptographic intent integrity, optimal liquidity routing, and atomic settlement — from natural language input to on-chain execution. Each layer operates as an independent, formally verified module with well-defined interfaces and failure modes.
+                            </p>
+                        </div>
                     </div>
 
-                    {/* Architecture layers */}
-                    <div className="space-y-8">
+                    {/* Layers */}
+                    <div className="space-y-3">
                         {architectureLayers.map((layer, li) => (
-                            <div key={li} className={`relative rounded-3xl overflow-hidden border ${layer.color === 'cyan' ? 'border-ai-cyan/10' : layer.color === 'purple' ? 'border-ai-purple/10' : 'border-ai-pink/10'} glass-bright`}>
-                                {/* Layer header */}
-                                <div className={`flex items-center gap-4 px-8 py-5 border-b ${layer.color === 'cyan' ? 'border-ai-cyan/10 bg-ai-cyan/3' : layer.color === 'purple' ? 'border-ai-purple/10 bg-ai-purple/3' : 'border-ai-pink/10 bg-ai-pink/3'}`}>
-                                    <span className={`font-mono font-bold text-xs tracking-widest ${layer.color === 'cyan' ? 'text-ai-cyan' : layer.color === 'purple' ? 'text-ai-purple' : 'text-ai-pink'}`}>
-                                        LAYER {layer.id}
+                            <div key={li} className="panel cut-corner" style={{ borderColor: 'var(--border)' }}>
+                                {/* Layer bar */}
+                                <div className="flex items-center gap-5 px-7 py-4" style={{ borderBottom: '1px solid var(--border)' }}>
+                                    <span className="font-mono-custom font-semibold text-xs tracking-widest" style={{ color: 'var(--accent)' }}>
+                                        {layer.id}
                                     </span>
-                                    <div className={`h-px flex-1 ${layer.color === 'cyan' ? 'bg-ai-cyan/20' : layer.color === 'purple' ? 'bg-ai-purple/20' : 'bg-ai-pink/20'}`} />
-                                    <h3 className="font-display font-bold text-white text-lg">{layer.label}</h3>
+                                    <div style={{ width: '1px', height: '12px', background: 'var(--border-hi)' }} />
+                                    <span className="font-display font-semibold text-white text-sm tracking-wide">{layer.label}</span>
+                                    <div className="flex-1" style={{ height: '1px', background: 'var(--border)' }} />
+                                    <span className="mono-label" style={{ color: 'var(--text-400)' }}>2 MODULES</span>
                                 </div>
 
                                 {/* Modules */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-white/[0.05]">
+                                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x" style={{ borderColor: 'var(--border)' }}>
                                     {layer.modules.map((mod, mi) => (
-                                        <div key={mi} className="p-8 group hover:bg-white/[0.02] transition-colors duration-300">
-                                            <div className="flex items-start gap-4 mb-4">
-                                                <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${layer.color === 'cyan' ? 'bg-ai-cyan' : layer.color === 'purple' ? 'bg-ai-purple' : 'bg-ai-pink'}`}
-                                                    style={{ boxShadow: layer.color === 'cyan' ? '0 0 8px rgba(0,240,255,0.8)' : layer.color === 'purple' ? '0 0 8px rgba(168,85,247,0.8)' : '0 0 8px rgba(240,89,218,0.8)' }} />
-                                                <div>
-                                                    <h4 className={`font-display font-bold text-base mb-3 group-hover:text-white transition-colors ${layer.color === 'cyan' ? 'text-ai-cyan' : layer.color === 'purple' ? 'text-ai-purple' : 'text-ai-pink'}`}>
-                                                        {mod.name}
-                                                    </h4>
-                                                    <p className="text-white/40 text-sm leading-relaxed">{mod.desc}</p>
-                                                </div>
+                                        <div key={mi} className="p-8 group" style={{ transition: 'background 0.2s' }}>
+                                            <div className="border-l-accent pl-4 mb-5">
+                                                <div className="mono-label mb-2" style={{ color: 'var(--accent)' }}>{mod.tag}</div>
+                                                <h3 className="font-display font-semibold text-white text-base">{mod.name}</h3>
                                             </div>
+                                            <p style={{ color: 'var(--text-300)', fontSize: '13px', lineHeight: '1.85' }}>{mod.desc}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -315,128 +362,115 @@ export default function HomePage() {
                         ))}
                     </div>
 
-                    {/* Architecture diagram accent */}
-                    <div className="mt-16 relative rounded-3xl glass-bright border border-white/[0.05] overflow-hidden p-10">
-                        <div className="absolute inset-0 bg-gradient-to-br from-ai-cyan/3 via-transparent to-ai-purple/3" />
-                        <div className="relative z-10">
-                            <div className="text-center mb-10">
-                                <span className="text-xs font-mono text-white/30 tracking-widest uppercase">Protocol Data Flow</span>
-                            </div>
-                            <div className="flex flex-col md:flex-row items-center justify-center gap-0">
-                                {[
-                                    { label: 'Natural Language Input', sub: 'User Intent', color: 'ai-cyan' },
-                                    { label: '→', sub: '', color: 'white/20', isArrow: true },
-                                    { label: 'Neural Sentiment Engine', sub: 'Layer 01', color: 'ai-cyan' },
-                                    { label: '→', sub: '', color: 'white/20', isArrow: true },
-                                    { label: 'ZK-Intent Proof', sub: 'On-chain Commit', color: 'ai-purple' },
-                                    { label: '→', sub: '', color: 'white/20', isArrow: true },
-                                    { label: 'MEV Router', sub: 'Layer 02', color: 'ai-purple' },
-                                    { label: '→', sub: '', color: 'white/20', isArrow: true },
-                                    { label: 'Atomic Settlement', sub: 'Layer 03', color: 'ai-pink' },
-                                ].map((node, i) => (
-                                    node.isArrow ? (
-                                        <span key={i} className="text-white/20 font-mono text-2xl px-2 hidden md:block">→</span>
-                                    ) : (
-                                        <div key={i} className={`text-center px-5 py-4 rounded-2xl border ${node.color === 'ai-cyan' ? 'border-ai-cyan/20 bg-ai-cyan/5' : node.color === 'ai-purple' ? 'border-ai-purple/20 bg-ai-purple/5' : 'border-ai-pink/20 bg-ai-pink/5'} m-1`}>
-                                            <div className={`font-display font-bold text-xs text-${node.color}`}>{node.label}</div>
-                                            <div className="text-white/30 text-xs mt-1 font-mono">{node.sub}</div>
-                                        </div>
-                                    )
-                                ))}
-                            </div>
+                    {/* Data flow strip */}
+                    <div className="mt-8 panel cut-corner-sm p-6">
+                        <div className="flex items-center gap-2 mb-5">
+                            <span className="mono-label">Data Flow</span>
+                            <div className="flex-1" style={{ height: '1px', background: 'var(--border)' }} />
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 font-mono-custom text-xs">
+                            {[
+                                'Natural Language Input',
+                                '→ Neural Sentiment Engine',
+                                '→ ZK-Intent Proof',
+                                '→ On-chain Commitment',
+                                '→ MEV-Protected Router',
+                                '→ Liquidity Aggregation',
+                                '→ Atomic Settlement',
+                            ].map((node, i) => (
+                                <span key={i} style={{ color: i % 2 === 0 ? 'var(--text-200)' : 'var(--text-400)', letterSpacing: '0.04em' }}>{node}</span>
+                            ))}
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* ══════════════════════════════════════════════════════════════ */}
-            {/*  SECTION 3 — TOKENOMICS & REVENUE MODEL                      */}
-            {/* ══════════════════════════════════════════════════════════════ */}
-            <section id="tokenomics" className="py-36 px-6 relative">
-                <div className="absolute inset-0 bg-gradient-to-b from-ai-purple/5 via-transparent to-transparent pointer-events-none" />
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[1px] bg-gradient-to-r from-transparent via-ai-purple/30 to-transparent" />
+            {/* Divider */}
+            <div className="divider" />
 
-                <div className="max-w-7xl mx-auto relative z-10">
-                    <div className="text-center mb-24">
-                        <span className="text-xs font-semibold tracking-[0.35em] uppercase text-ai-purple/60">Tokenomics & Revenue Model</span>
-                        <h2 className="font-display text-4xl md:text-6xl font-black text-white mt-5 mb-6 leading-tight">
-                            $AIGENT — Protocol<br />
-                            <span className="text-gradient-warm">Value Accrual Engine</span>
-                        </h2>
-                        <p className="text-white/40 max-w-2xl mx-auto text-base leading-relaxed">
-                            $AIGENT is a deflationary utility token with embedded revenue-sharing mechanics. Every dollar of trading volume the protocol generates creates direct, verifiable on-chain value for long-term token holders.
-                        </p>
-                    </div>
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/*  SECTION 3 — TOKENOMICS & REVENUE MODEL                     */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <section id="tokenomics" className="py-40 px-8 lg:px-16 relative">
+                <div className="max-w-7xl mx-auto">
 
-                    {/* Revenue split highlight */}
-                    <div className="mb-16 relative rounded-3xl overflow-hidden border border-ai-purple/15 glass-bright p-10">
-                        <div className="absolute inset-0 bg-gradient-to-br from-ai-purple/5 to-transparent" />
-                        <div className="relative z-10">
-                            <div className="text-center mb-10">
-                                <h3 className="font-display font-bold text-2xl text-white mb-2">Protocol Revenue Distribution</h3>
-                                <p className="text-white/30 text-sm font-mono">Automated on-chain via smart contract treasury · No human discretion required</p>
-                            </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {[
-                                    { pct: '30%', label: 'Buyback & Burn', desc: 'Automatically acquired from open market and permanently burned via deflationary token contract, reducing circulating supply proportional to protocol usage.', color: 'ai-pink', icon: '🔥' },
-                                    { pct: '40%', label: 'Staker Yield Distribution', desc: 'Distributed pro-rata to $AIGENT stakers with ≥90-day lock commitments, creating a yield-bearing, protocol-native income stream with fully on-chain audit trails.', color: 'ai-purple', icon: '💎' },
-                                    { pct: '30%', label: 'Protocol Development Reserve', desc: 'Directed to the multi-sig treasury for continued R&D, security audits, ecosystem grants, and AI model infrastructure subscriptions governed by DAO vote.', color: 'ai-cyan', icon: '🏛' },
-                                ].map((r, i) => (
-                                    <div key={i} className={`relative p-7 rounded-2xl border ${r.color === 'ai-pink' ? 'border-ai-pink/15 bg-ai-pink/5' : r.color === 'ai-purple' ? 'border-ai-purple/15 bg-ai-purple/5' : 'border-ai-cyan/15 bg-ai-cyan/5'} group hover:scale-[1.01] transition-transform duration-300`}>
-                                        <div className="text-4xl mb-4">{r.icon}</div>
-                                        <div className={`font-display font-black text-5xl mb-2 ${r.color === 'ai-pink' ? 'text-ai-pink' : r.color === 'ai-purple' ? 'text-ai-purple' : 'text-ai-cyan'}`}>{r.pct}</div>
-                                        <div className="font-display font-bold text-white text-lg mb-3">{r.label}</div>
-                                        <p className="text-white/35 text-sm leading-relaxed">{r.desc}</p>
-                                    </div>
-                                ))}
-                            </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-24">
+                        <div className="lg:col-span-1">
+                            <div className="mono-label mb-4">Section 03</div>
+                            <h2 className="font-display font-bold text-white text-4xl lg:text-5xl leading-tight">
+                                $AIGENT<br />Token<br />Economics
+                            </h2>
+                        </div>
+                        <div className="lg:col-span-2 flex items-end">
+                            <p style={{ color: 'var(--text-300)', maxWidth: '60ch', lineHeight: '1.85', fontSize: '14px' }}>
+                                $AIGENT is a deflationary utility token with embedded revenue-sharing mechanics. 30% of all gross trading revenue generated by active AIGENT agents is directed to an autonomous on-chain treasury that executes market buybacks and permanently destroys acquired tokens, creating a supply curve inversely correlated with protocol usage volume.
+                            </p>
                         </div>
                     </div>
 
-                    {/* Token utility grid */}
-                    <div className="mb-16">
-                        <h3 className="font-display font-bold text-2xl text-white text-center mb-10">Token Utility Framework</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                            {tokenomicsUtilities.map((u, i) => (
-                                <div key={i} className="group relative p-7 rounded-2xl glass-bright hover:bg-white/[0.04] transition-all duration-500 border border-white/[0.05] hover:border-ai-purple/20 overflow-hidden">
-                                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-ai-purple/5 to-transparent" />
-                                    <div className="text-3xl mb-5">{u.icon}</div>
-                                    <h4 className="font-display font-bold text-white text-base mb-3 group-hover:text-ai-purple transition-colors">{u.title}</h4>
-                                    <p className="text-white/35 text-sm leading-relaxed relative z-10">{u.desc}</p>
+                    {/* Revenue allocation */}
+                    <div className="panel cut-corner mb-6 p-8">
+                        <div className="flex items-center gap-3 mb-8">
+                            <span className="mono-label">Protocol Revenue Distribution</span>
+                            <div className="flex-1" style={{ height: '1px', background: 'var(--border)' }} />
+                            <span className="mono-label" style={{ color: 'var(--text-400)' }}>AUTOMATED · ON-CHAIN · NO HUMAN DISCRETION</span>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            {revenueAllocation.map((r, i) => (
+                                <div key={i} className="p-7 cut-corner-sm" style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)' }}>
+                                    <div className="font-mono-custom font-semibold mb-1" style={{ color: 'var(--accent)', fontSize: '11px', letterSpacing: '0.15em' }}>{r.icon}&nbsp;&nbsp;{r.label}</div>
+                                    <div className="font-display font-black text-white my-3" style={{ fontSize: '3.5rem', lineHeight: 1 }}>{r.pct}</div>
+                                    <p style={{ color: 'var(--text-300)', fontSize: '12px', lineHeight: '1.75' }}>{r.desc}</p>
                                 </div>
                             ))}
                         </div>
                     </div>
 
                     {/* Staking tiers */}
-                    <div>
-                        <div className="text-center mb-12">
-                            <h3 className="font-display font-bold text-3xl text-white mb-3">VIP Staking Tiers</h3>
-                            <p className="text-white/30 text-sm max-w-xl mx-auto">Token staking quantity gates access to progressively more capable AI inference models. Greater stake commitment unlocks deeper protocol capabilities and superior execution infrastructure.</p>
+                    <div className="mb-3">
+                        <div className="flex items-center gap-3 mb-6">
+                            <span className="mono-label">VIP Staking Tiers — AI Model Access</span>
+                            <div className="flex-1" style={{ height: '1px', background: 'var(--border)' }} />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                             {stakingTiers.map((tier, i) => (
-                                <div key={i} className={`relative p-7 rounded-2xl glass-bright border border-white/[0.06] hover:border-${tier.color}/20 transition-all duration-500 flex flex-col group overflow-hidden`}>
-                                    {i === 2 && (
-                                        <div className="absolute top-4 right-4 px-2 py-1 rounded-full bg-ai-purple/20 border border-ai-purple/30 text-xs text-ai-purple font-semibold">POPULAR</div>
+                                <div
+                                    key={i}
+                                    className="relative p-7 cut-corner flex flex-col"
+                                    style={{
+                                        background: tier.featured ? 'var(--accent-dim)' : 'var(--surface)',
+                                        border: `1px solid ${tier.featured ? 'var(--accent-border)' : 'var(--border)'}`,
+                                    }}
+                                >
+                                    {tier.featured && (
+                                        <div className="mono-label mb-4" style={{ color: 'var(--accent)' }}>◆ MOST POPULAR</div>
                                     )}
-                                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-b from-ai-purple/3 to-transparent" />
-                                    <div className={`font-display font-black text-4xl text-${tier.color} mb-1 relative z-10`}>{tier.tier}</div>
-                                    <div className="font-mono text-xs text-white/25 mb-5 tracking-widest">{tier.amount} $AIGENT staked</div>
-                                    <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl mb-6 text-xs font-semibold text-${tier.color} border border-${tier.color}/20 bg-${tier.color}/5 w-fit`}>
-                                        🤖 {tier.model}
+                                    <div className="font-mono-custom font-semibold text-xs tracking-widest mb-1" style={{ color: tier.featured ? 'var(--accent)' : 'var(--text-400)' }}>
+                                        {tier.tier}
                                     </div>
-                                    <ul className="space-y-2.5 flex-1 relative z-10">
+                                    <div className="font-mono-custom text-white font-semibold mb-1" style={{ fontSize: '1.5rem' }}>
+                                        {tier.amount}
+                                    </div>
+                                    <div className="mono-label mb-5" style={{ color: 'var(--text-400)' }}>$AIGENT STAKED</div>
+
+                                    <div className="py-2 px-3 mb-6 cut-corner-sm" style={{ background: 'var(--surface-hi)', border: '1px solid var(--border-hi)' }}>
+                                        <span className="mono-label" style={{ color: tier.featured ? 'var(--accent)' : 'var(--text-300)' }}>AI: {tier.model}</span>
+                                    </div>
+
+                                    <ul className="space-y-2.5 flex-1 mb-7">
                                         {tier.perks.map((perk, j) => (
-                                            <li key={j} className="flex items-center gap-2.5 text-sm text-white/50">
-                                                <span className={`text-${tier.color} text-xs`}>◆</span>
+                                            <li key={j} className="flex items-start gap-2.5 text-xs" style={{ color: 'var(--text-300)', fontFamily: 'var(--font-mono)' }}>
+                                                <span style={{ color: tier.featured ? 'var(--accent)' : 'var(--text-400)', marginTop: '2px' }}>›</span>
                                                 {perk}
                                             </li>
                                         ))}
                                     </ul>
-                                    <button className={`mt-7 w-full py-3 rounded-xl font-semibold text-sm transition-all duration-300 ${i === 2 ? 'btn-shimmer text-ai-bg' : 'glass border border-white/[0.08] text-white/60 hover:text-white hover:border-white/20'}`}>
-                                        {i === 2 ? 'Stake Now →' : 'Learn More'}
-                                    </button>
+
+                                    {tier.featured ? (
+                                        <button className="btn-primary w-full justify-center">Stake Now →</button>
+                                    ) : (
+                                        <button className="btn-secondary w-full justify-center">Learn More</button>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -444,115 +478,136 @@ export default function HomePage() {
                 </div>
             </section>
 
-            {/* ══════════════════════════════════════════════════════════════ */}
-            {/*  SECTION 4 — INSTITUTIONAL SECURITY                          */}
-            {/* ══════════════════════════════════════════════════════════════ */}
-            <section id="security" className="py-36 px-6 relative">
-                <div className="absolute inset-0 hex-bg opacity-15 pointer-events-none" />
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[1px] bg-gradient-to-r from-transparent via-ai-cyan/20 to-transparent" />
+            <div className="divider" />
 
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/*  SECTION 4 — INSTITUTIONAL SECURITY                         */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <section id="security" className="py-40 px-8 lg:px-16 relative">
+                <div className="absolute inset-0 micro-grid opacity-30 pointer-events-none" />
                 <div className="max-w-7xl mx-auto relative z-10">
-                    <div className="text-center mb-24">
-                        <span className="text-xs font-semibold tracking-[0.35em] uppercase text-ai-cyan/60">Institutional Security</span>
-                        <h2 className="font-display text-4xl md:text-6xl font-black text-white mt-5 mb-6 leading-tight">
-                            Defense-in-Depth<br />
-                            <span className="text-gradient-cyan">Security Architecture</span>
-                        </h2>
-                        <p className="text-white/40 max-w-2xl mx-auto text-base leading-relaxed">
-                            AIGENT's security posture is designed to institutional custodial standards, incorporating formal verification, on-chain risk management, and multi-layered operational controls that exceed conventional DeFi security benchmarks.
-                        </p>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-24">
+                        <div className="lg:col-span-1">
+                            <div className="mono-label mb-4">Section 04</div>
+                            <h2 className="font-display font-bold text-white text-4xl lg:text-5xl leading-tight">
+                                Security<br />Framework
+                            </h2>
+                        </div>
+                        <div className="lg:col-span-2 flex items-end">
+                            <p style={{ color: 'var(--text-300)', maxWidth: '60ch', lineHeight: '1.85', fontSize: '14px' }}>
+                                AIGENT's security posture is designed to institutional custodial standards, incorporating formal verification, on-chain risk management, and multi-layered operational controls that exceed conventional DeFi security benchmarks by multiple standard deviations.
+                            </p>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
+                    {/* Security grid */}
+                    <div className="space-y-px" style={{ border: '1px solid var(--border)' }}>
                         {securityItems.map((item, i) => (
-                            <div key={i} className="group relative p-8 rounded-2xl glass-bright border border-white/[0.06] hover:border-ai-cyan/15 transition-all duration-500 overflow-hidden">
-                                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-ai-cyan/4 to-transparent" />
-                                <div className="text-3xl mb-5">{item.icon}</div>
-                                <h3 className="font-display font-bold text-white text-base mb-4 group-hover:text-ai-cyan transition-colors">{item.label}</h3>
-                                <p className="text-white/35 text-sm leading-relaxed relative z-10">{item.desc}</p>
+                            <div
+                                key={i}
+                                className="hover-row grid grid-cols-1 md:grid-cols-12 gap-6 px-7 py-6"
+                                style={{ borderBottom: i < securityItems.length - 1 ? '1px solid var(--border)' : 'none', margin: 0 }}
+                            >
+                                <div className="md:col-span-4">
+                                    <div className="mono-label mb-1.5">{item.code}</div>
+                                    <div className="font-display font-semibold text-white text-sm">{item.label}</div>
+                                </div>
+                                <div className="md:col-span-8">
+                                    <p style={{ color: 'var(--text-300)', fontSize: '13px', lineHeight: '1.8' }}>{item.desc}</p>
+                                </div>
                             </div>
                         ))}
                     </div>
 
-                    {/* Audit badges row */}
-                    <div className="relative rounded-3xl glass-bright border border-white/[0.05] p-8 overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-ai-cyan/3 to-transparent" />
-                        <div className="relative z-10">
-                            <div className="text-center mb-8">
-                                <span className="text-xs font-mono text-white/30 tracking-widest uppercase">Security Audits & Certifications</span>
-                            </div>
-                            <div className="flex flex-wrap items-center justify-center gap-4">
-                                {[
-                                    'Trail of Bits — Smart Contract Audit',
-                                    'Spearbit — Security Review',
-                                    'OpenZeppelin — Contract Standards',
-                                    'Chainalysis — Compliance Layer',
-                                    'Immunefi — $1M Bug Bounty',
-                                    'CertiK — On-chain Monitoring',
-                                ].map((auditor, i) => (
-                                    <div key={i} className="flex items-center gap-2 px-4 py-2.5 rounded-xl glass border border-white/[0.08] text-white/40 text-xs font-semibold hover:border-ai-cyan/20 hover:text-white/60 transition-all duration-300">
-                                        <span className="text-ai-cyan">✓</span>
-                                        {auditor}
-                                    </div>
-                                ))}
-                            </div>
+                    {/* Audit badges */}
+                    <div className="mt-6 panel cut-corner-sm p-6">
+                        <div className="flex items-center gap-3 mb-5">
+                            <span className="mono-label">Security Certifications</span>
+                            <div className="flex-1" style={{ height: '1px', background: 'var(--border)' }} />
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                            {[
+                                'Trail of Bits — Smart Contract Audit',
+                                'Spearbit — Security Review',
+                                'OpenZeppelin — Contract Standards',
+                                'Chainalysis — Compliance',
+                                'Immunefi — $1M Bug Bounty',
+                                'CertiK — On-chain Monitoring',
+                            ].map((auditor, i) => (
+                                <div
+                                    key={i}
+                                    className="flex items-center gap-2 px-4 py-2 font-mono-custom text-xs cut-corner-sm"
+                                    style={{ background: 'var(--surface-hi)', border: '1px solid var(--border)', color: 'var(--text-300)' }}
+                                >
+                                    <span style={{ color: 'var(--accent)' }}>✓</span>
+                                    {auditor}
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* ══════════════════════════════════════════════════════════════ */}
-            {/*  SECTION 5 — ROADMAP                                         */}
-            {/* ══════════════════════════════════════════════════════════════ */}
-            <section id="roadmap" className="py-36 px-6 relative">
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-ai-purple/3 to-transparent pointer-events-none" />
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[1px] bg-gradient-to-r from-transparent via-ai-pink/20 to-transparent" />
+            <div className="divider" />
 
-                <div className="max-w-7xl mx-auto relative z-10">
-                    <div className="text-center mb-24">
-                        <span className="text-xs font-semibold tracking-[0.35em] uppercase text-ai-pink/60">Strategic Roadmap</span>
-                        <h2 className="font-display text-4xl md:text-6xl font-black text-white mt-5 mb-6 leading-tight">
-                            Four-Phase Path to<br />
-                            <span className="text-gradient-warm">Protocol Sovereignty</span>
-                        </h2>
-                        <p className="text-white/40 max-w-2xl mx-auto text-base leading-relaxed">
-                            AIGENT's development trajectory is structured across four sequential protocol maturity phases, each building on verifiable technical milestones before proceeding to the subsequent stage.
-                        </p>
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/*  SECTION 5 — ROADMAP                                        */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <section id="roadmap" className="py-40 px-8 lg:px-16">
+                <div className="max-w-7xl mx-auto">
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 mb-24">
+                        <div className="lg:col-span-1">
+                            <div className="mono-label mb-4">Section 05</div>
+                            <h2 className="font-display font-bold text-white text-4xl lg:text-5xl leading-tight">
+                                Strategic<br />Roadmap
+                            </h2>
+                        </div>
+                        <div className="lg:col-span-2 flex items-end">
+                            <p style={{ color: 'var(--text-300)', maxWidth: '60ch', lineHeight: '1.85', fontSize: '14px' }}>
+                                AIGENT's development trajectory is structured across four sequential protocol maturity phases. Each phase builds upon verifiable on-chain milestones before proceeding, ensuring protocol integrity and investor accountability are maintained at every stage of the development cycle.
+                            </p>
+                        </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                         {roadmapPhases.map((phase, i) => {
-                            const colors = ['ai-cyan', 'ai-purple', 'ai-pink', 'white/30'];
-                            const c = colors[i];
-                            const statusColors: Record<string, string> = {
-                                'Live': 'text-green-400 border-green-400/20 bg-green-400/5',
-                                'Upcoming': 'text-ai-cyan border-ai-cyan/20 bg-ai-cyan/5',
-                                'Planned': 'text-ai-purple border-ai-purple/20 bg-ai-purple/5',
-                                'Vision': 'text-white/30 border-white/10 bg-white/3',
+                            const statusStyle: Record<string, { color: string; bg: string; border: string }> = {
+                                'LIVE': { color: '#4ade80', bg: 'rgba(74,222,128,0.06)', border: 'rgba(74,222,128,0.15)' },
+                                'UPCOMING': { color: 'var(--accent)', bg: 'var(--accent-dim)', border: 'var(--accent-border)' },
+                                'PLANNED': { color: 'var(--text-300)', bg: 'var(--surface)', border: 'var(--border)' },
+                                'VISION': { color: 'var(--text-400)', bg: 'transparent', border: 'var(--border)' },
                             };
+                            const s = statusStyle[phase.status];
                             return (
-                                <div key={i} className={`relative p-8 rounded-3xl glass-bright border border-${c}/10 hover:border-${c}/20 transition-all duration-500 overflow-hidden group`}>
-                                    <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-${c}/4 to-transparent`} />
-                                    <div className="relative z-10">
-                                        <div className="flex items-start justify-between mb-6">
-                                            <div>
-                                                <div className={`font-mono text-xs font-bold text-${c} tracking-widest mb-1 uppercase`}>{phase.phase}</div>
-                                                <h3 className="font-display font-black text-white text-xl">{phase.title}</h3>
-                                                <div className="text-white/30 font-mono text-xs mt-1">{phase.period}</div>
-                                            </div>
-                                            <span className={`px-3 py-1.5 rounded-full border text-xs font-semibold ${statusColors[phase.status]}`}>
-                                                {phase.status === 'Live' && '● '}{phase.status}
-                                            </span>
+                                <div
+                                    key={i}
+                                    className="panel cut-corner p-8"
+                                    style={{ borderColor: i === 0 ? 'var(--accent-border)' : 'var(--border)' }}
+                                >
+                                    <div className="flex items-start justify-between mb-7">
+                                        <div>
+                                            <div className="mono-label mb-1.5">{phase.phase}</div>
+                                            <h3 className="font-display font-bold text-white text-xl leading-tight">{phase.title}</h3>
+                                            <div className="font-mono-custom text-xs mt-2" style={{ color: 'var(--text-400)' }}>{phase.period}</div>
                                         </div>
-                                        <ul className="space-y-3">
-                                            {phase.items.map((item, j) => (
-                                                <li key={j} className="flex items-start gap-3 text-sm text-white/45">
-                                                    <span className={`text-${c} text-xs mt-0.5 shrink-0`}>◆</span>
-                                                    {item}
-                                                </li>
-                                            ))}
-                                        </ul>
+                                        <div
+                                            className="font-mono-custom text-xs font-semibold px-3 py-1 cut-corner-sm tracking-widest"
+                                            style={{ color: s.color, background: s.bg, border: `1px solid ${s.border}` }}
+                                        >
+                                            {phase.status === 'LIVE' && '● '}{phase.status}
+                                        </div>
                                     </div>
+
+                                    <ul className="space-y-3">
+                                        {phase.items.map((item, j) => (
+                                            <li key={j} className="flex items-start gap-3 font-mono-custom text-xs" style={{ color: 'var(--text-300)', lineHeight: '1.7' }}>
+                                                <span style={{ color: i === 0 ? 'var(--accent)' : 'var(--text-400)', marginTop: '2px', flexShrink: 0 }}>›</span>
+                                                {item}
+                                            </li>
+                                        ))}
+                                    </ul>
                                 </div>
                             );
                         })}
@@ -560,87 +615,90 @@ export default function HomePage() {
                 </div>
             </section>
 
-            {/* ══════════════════════════════════════════════════════════════ */}
-            {/*  FINAL CTA                                                    */}
-            {/* ══════════════════════════════════════════════════════════════ */}
-            <section className="py-36 px-6">
-                <div className="max-w-4xl mx-auto text-center">
-                    <div className="relative p-16 rounded-3xl overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-ai-cyan/10 via-ai-purple/10 to-ai-pink/10 rounded-3xl" />
-                        <div className="absolute inset-px rounded-3xl border border-white/[0.08]" />
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-ai-purple/5 rounded-full blur-[100px] pointer-events-none" />
+            <div className="divider" />
 
-                        <div className="relative z-10">
-                            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass border border-ai-cyan/20 text-xs font-semibold text-ai-cyan mb-8 tracking-widest uppercase">
-                                <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-ai-cyan opacity-75" />
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-ai-cyan" />
-                                </span>
-                                Beta Access Now Open
-                            </div>
-                            <h2 className="font-display text-4xl md:text-6xl font-black text-white mb-6 leading-tight">
-                                The Future of<br />
-                                <span className="text-gradient-warm">Autonomous Finance</span>
-                            </h2>
-                            <p className="text-white/40 mb-12 text-lg max-w-2xl mx-auto leading-relaxed">
-                                Stake $AIGENT to unlock beta access and position yourself at the frontier of intent-centric, AI-native decentralized finance. Early stakers receive priority queue access, elevated governance weight, and enhanced yield distribution for the protocol's inaugural epoch.
-                            </p>
-                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                                <button className="btn-shimmer px-10 py-4 rounded-2xl font-bold text-ai-bg text-base tracking-wide">
-                                    Stake to Access Beta →
-                                </button>
-                                <button className="px-10 py-4 rounded-2xl font-semibold glass text-white/60 hover:text-white transition-all border border-white/[0.08] hover:border-white/20">
-                                    Read Technical Litepaper ↗
-                                </button>
-                            </div>
-                            <p className="text-white/20 text-xs mt-8 font-mono">
-                                Non-custodial · ZK-Intent Verified · Audited by Trail of Bits & Spearbit
-                            </p>
-                        </div>
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/*  FINAL CTA                                                   */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <section className="py-48 px-8 lg:px-16 relative overflow-hidden">
+                <div className="absolute inset-0 micro-grid-lg opacity-40 pointer-events-none" />
+                <div className="max-w-5xl mx-auto text-center relative z-10">
+                    <div className="mono-label mb-8" style={{ color: 'var(--accent)' }}>
+                        <span className="relative inline-flex h-1.5 w-1.5 mr-2 align-middle">
+                            <span className="animate-ping absolute inline-flex h-full w-full" style={{ background: 'var(--accent)', opacity: 0.6 }} />
+                            <span className="relative inline-flex h-1.5 w-1.5" style={{ background: 'var(--accent)' }} />
+                        </span>
+                        BETA ACCESS NOW OPEN — LIMITED ALLOCATION
                     </div>
+
+                    <h2 className="font-display font-bold text-white leading-tight mb-8" style={{ fontSize: 'clamp(2.5rem, 5vw, 5rem)' }}>
+                        The Future of<br />
+                        <span className="text-gradient">Autonomous Finance</span>
+                    </h2>
+
+                    <p style={{ color: 'var(--text-300)', fontSize: '15px', lineHeight: '1.85', maxWidth: '54ch', margin: '0 auto 3rem' }}>
+                        Stake $AIGENT to unlock beta access and position yourself at the frontier of intent-centric, AI-native decentralized finance. Early stakers receive priority queue access, elevated governance weight, and enhanced yield distribution for the protocol's inaugural epoch.
+                    </p>
+
+                    <div className="flex flex-wrap items-center justify-center gap-4 mb-12">
+                        <button className="btn-primary" style={{ fontSize: '11px', padding: '15px 36px' }}>
+                            Stake to Access Beta →
+                        </button>
+                        <button className="btn-secondary" style={{ fontSize: '11px', padding: '14px 36px' }}>
+                            Read Technical Litepaper ↗
+                        </button>
+                    </div>
+
+                    <p className="font-mono-custom text-xs" style={{ color: 'var(--text-400)', letterSpacing: '0.06em' }}>
+                        Non-custodial · ZK-Intent Verified · Audited by Trail of Bits & Spearbit · Not financial advice
+                    </p>
                 </div>
             </section>
 
             {/* ── FOOTER ──── */}
-            <footer className="border-t border-white/[0.05] py-12 px-6">
+            <footer style={{ borderTop: '1px solid var(--border)' }} className="py-14 px-8 lg:px-16">
                 <div className="max-w-7xl mx-auto">
-                    <div className="flex flex-col md:flex-row items-start justify-between gap-10 mb-10">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
                         {/* Brand */}
-                        <div className="max-w-xs">
-                            <div className="flex items-center gap-3 mb-4">
-                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-ai-cyan/30 to-ai-purple/30 flex items-center justify-center border border-white/10">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                                        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="#00f0ff" strokeWidth="2" strokeLinejoin="round" />
-                                        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="#00f0ff" strokeWidth="2" strokeLinejoin="round" />
+                        <div>
+                            <div className="flex items-center gap-3 mb-5">
+                                <div className="w-7 h-7 cut-corner-sm flex items-center justify-center" style={{ border: '1px solid var(--accent-border)', background: 'var(--accent-dim)' }}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                                        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
+                                        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="var(--accent)" strokeWidth="1.5" strokeLinejoin="round" />
                                     </svg>
                                 </div>
-                                <span className="font-display font-black text-xl text-white">AI<span className="text-ai-cyan">GENT</span></span>
+                                <span className="font-display font-bold text-white">AI<span style={{ color: 'var(--accent)' }}>GENT</span></span>
                             </div>
-                            <p className="text-white/25 text-xs leading-relaxed">The First Intent-Centric AI Liquidity Protocol. Non-custodial, ZK-verified, MEV-protected execution for the next generation of DeFi.</p>
+                            <p className="font-mono-custom text-xs leading-relaxed" style={{ color: 'var(--text-400)' }}>
+                                The First Intent-Centric<br />AI Liquidity Protocol.<br />Non-custodial. ZK-verified.
+                            </p>
                         </div>
 
                         {/* Links */}
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 text-sm">
-                            {[
-                                { heading: 'Protocol', links: ['Architecture', 'Tokenomics', 'Security', 'Roadmap'] },
-                                { heading: 'Resources', links: ['Technical Litepaper', 'Audit Reports', 'API Documentation', 'Bug Bounty'] },
-                                { heading: 'Community', links: ['Telegram', 'Discord', 'Twitter/X', 'GitHub'] },
-                            ].map((col, i) => (
-                                <div key={i}>
-                                    <div className="text-white/50 font-semibold text-xs tracking-widest uppercase mb-4">{col.heading}</div>
-                                    <ul className="space-y-2.5">
-                                        {col.links.map((l, j) => (
-                                            <li key={j}><a href="#" className="text-white/25 hover:text-white/60 transition-colors duration-200 text-xs">{l}</a></li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            ))}
-                        </div>
+                        {[
+                            { heading: 'Protocol', links: ['Architecture', 'Tokenomics', 'Security', 'Roadmap'] },
+                            { heading: 'Resources', links: ['Technical Litepaper', 'Audit Reports', 'API Documentation', 'Bug Bounty'] },
+                            { heading: 'Community', links: ['Telegram', 'Discord', 'Twitter/X', 'GitHub'] },
+                        ].map((col, i) => (
+                            <div key={i}>
+                                <div className="mono-label mb-5" style={{ color: 'var(--text-400)' }}>{col.heading}</div>
+                                <ul className="space-y-3">
+                                    {col.links.map((l, j) => (
+                                        <li key={j}>
+                                            <a href="#" className="footer-link">
+                                                {l}
+                                            </a>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
                     </div>
 
-                    <div className="border-t border-white/[0.05] pt-8 flex flex-col md:flex-row items-center justify-between gap-3">
-                        <p className="text-white/20 text-xs font-mono">© 2026 AIGENT Protocol. All rights reserved.</p>
-                        <p className="text-white/15 text-xs font-mono">Powered by Anthropic Claude · Non-custodial · Not financial advice · This is experimental software.</p>
+                    <div style={{ borderTop: '1px solid var(--border)' }} className="pt-8 flex flex-col md:flex-row items-center justify-between gap-3">
+                        <p className="font-mono-custom text-xs" style={{ color: 'var(--text-400)' }}>© 2026 AIGENT Protocol. All rights reserved.</p>
+                        <p className="font-mono-custom text-xs" style={{ color: 'var(--text-500)' }}>Powered by Anthropic Claude · Experimental software · Not financial advice</p>
                     </div>
                 </div>
             </footer>
