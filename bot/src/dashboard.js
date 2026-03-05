@@ -71,43 +71,89 @@ async function getFastProvider(isTestnet) {
 }
 
 /**
- * Fetches live USDC balance for a wallet address.
+ * Fetches live USDC balance from Arbitrum One via ethers.js balanceOf.
+ * - Always hardcodes the official Arbitrum Native USDC contract
+ * - 3s hard timeout
+ * - On ANY failure: returns '$0.00 (RPC Error)' — never 'Fetching...'
+ *
  * @param {string} walletAddress
- * @param {boolean} isTestnet
- * @returns {Promise<string>} Formatted balance e.g. "$1,234.56"
+ * @returns {Promise<string>}  e.g. '$1,234.56' or '$0.00 (RPC Error)'
  */
-async function getUsdcBalance(walletAddress, isTestnet) {
-    if (!walletAddress) return null;
+async function getArbUsdcBalance(walletAddress) {
+    if (!walletAddress) return '$0.00 (No Wallet)';
 
-    const usdcAddress = isTestnet ? USDC.testnet : USDC.mainnet;
+    // ALWAYS use Arbitrum One mainnet USDC — never testnet address
+    const USDC_ARB_MAINNET = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+    const ABI = ['function balanceOf(address) view returns (uint256)'];
 
-    // Race all public RPCs — whichever responds first wins
-    const rpcUrls = isTestnet
-        ? [ARB_TESTNET_RPC]
-        : (() => {
-            const envUrl = process.env.ARB_RPC_URL;
-            const base = (envUrl && !envUrl.includes('YOUR_KEY')) ? [envUrl, ...ARB_RPCS] : ARB_RPCS;
-            return base;
-        })();
+    // Three reliable RPCs — whichever responds first wins
+    const RPCS = [
+        'https://rpc.ankr.com/arbitrum',
+        'https://arbitrum.llamarpc.com',
+        'https://arb1.arbitrum.io/rpc',
+    ];
 
-    // Try all RPCs in parallel, return the first successful result
     try {
         const balance = await Promise.race([
-            // Race all RPC attempts
-            ...rpcUrls.map(async (url) => {
+            // Race all 3 RPC providers simultaneously
+            ...RPCS.map(async (url) => {
                 const provider = new ethers.providers.JsonRpcProvider(url);
-                const contract = new ethers.Contract(usdcAddress, ERC20_ABI, provider);
+                const contract = new ethers.Contract(USDC_ARB_MAINNET, ABI, provider);
                 const raw = await contract.balanceOf(walletAddress);
-                return Number(raw) / 1e6;
+                const amount = Number(raw) / 1e6;  // USDC = 6 decimals
+                if (isNaN(amount)) throw new Error('invalid response');
+                return amount;
             }),
-            // Hard timeout — always shows a value within 4s
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4_000)),
+            // Hard 3s deadline — no more infinite loading
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('3s timeout')), 3_000)
+            ),
         ]);
+
         return `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    } catch {
-        return null;
+    } catch (err) {
+        console.warn('[DASHBOARD] ARB USDC balance error:', err.message);
+        return '$0.00 (RPC Error)';
     }
 }
+
+/**
+ * Fetches USDC balance inside Hyperliquid exchange (clearinghouse state).
+ * This is the user's HL perpetuals account balance — separate from on-chain.
+ *
+ * @param {string} walletAddress  — EVM address of the user's wallet
+ * @returns {Promise<string>}  e.g. '$1,234.56' or '$0.00 (N/A)'
+ */
+async function getHlBalance(walletAddress) {
+    if (!walletAddress) return '$0.00 (No Wallet)';
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3_000);
+
+    try {
+        const res = await fetch('https://api.hyperliquid.xyz/info', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'clearinghouseState', user: walletAddress }),
+            signal: controller.signal,
+        });
+        clearTimeout(timer);
+
+        if (!res.ok) return '$0.00 (N/A)';
+        const data = await res.json();
+
+        // marginSummary.accountValue is the total USDC equity in the account
+        const equity = parseFloat(data?.marginSummary?.accountValue ?? '0');
+        if (isNaN(equity)) return '$0.00 (N/A)';
+
+        return `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    } catch (err) {
+        clearTimeout(timer);
+        console.warn('[DASHBOARD] HL balance error:', err.message);
+        return '$0.00 (HL Error)';
+    }
+}
+
 
 /**
  * Fetches mark price from Hyperliquid's PUBLIC REST endpoint.
@@ -153,23 +199,18 @@ function simulatePnL(session) {
 async function buildDashboard(session) {
     const isTestnet = session.isTestnet;
 
-    // Fetch price and balance INDEPENDENTLY — one failing never blocks the other
+    // Fetch all 3 data points INDEPENDENTLY — any one failing never blocks the others
     let markPrice = null;
-    let usdcBalance = null;
+    let arbBalance = '$0.00 (RPC Error)';
+    let hlBalance = '$0.00 (N/A)';
 
-    try {
-        markPrice = await getMarkPrice(session.asset);
-    } catch { /* price fetch failed — dashboard still renders with N/A */ }
-
-    try {
-        usdcBalance = await getUsdcBalance(session.walletAddress, isTestnet);
-    } catch { /* balance fetch failed — dashboard still renders with N/A */ }
+    try { markPrice = await getMarkPrice(session.asset); } catch { }
+    try { arbBalance = await getArbUsdcBalance(session.walletAddress); } catch { }
+    try { hlBalance = await getHlBalance(session.walletAddress); } catch { }
 
     const priceStr = markPrice
         ? `$${markPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        : '⏳ Fetching...';
-
-    const balanceStr = usdcBalance || '⏳ Fetching...';
+        : 'N/A';
 
     const pnl = simulatePnL(session);
     const pnlSign = pnl >= 0 ? '+' : '';
@@ -190,7 +231,8 @@ async function buildDashboard(session) {
         `📊 *AIGENT LIVE DASHBOARD*\n` +
         `🟢 System Status: OPERATIONAL | ${net}\n\n` +
         `🏦 *금고 자산 (Vault)*\n` +
-        `💵 USDC 잔고: *${balanceStr}*\n\n` +
+        `🔷 ARB 지갑 USDC: *${arbBalance}*\n` +
+        `🔶 HL 거래소 USDC: *${hlBalance}*\n\n` +
         `📈 *포지션 상태 (Hyperliquid)*\n` +
         `🪙 티커: *${session.asset}/USDC*\n` +
         `🎯 현재가 (Mark Px): *${priceStr}*\n` +
@@ -199,6 +241,7 @@ async function buildDashboard(session) {
         (session.gridCount > 0 ? `📐 그리드 범위: ${rangeLabel}\n\n` : '\n') +
         `🔄 Last Sync: \`${timeStr()}\``
     );
+
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
