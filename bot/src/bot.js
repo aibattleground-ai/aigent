@@ -244,42 +244,53 @@ export async function startBot() {
         const l = lang(chatId);
         if (!await requireWallet(ctx)) return;
 
-        const statusMsg = await ctx.reply(
-            l === 'ko' ? '_ARB 지갑 잔고 확인 중..._' : '_Checking ARB wallet balance..._',
-            { parse_mode: 'Markdown' }
-        );
+        // Always clear any stale pending state before showing a fresh prompt
+        depositPending.delete(chatId);
 
-        // Fetch ARB USDC balance using the same axios eth_call function from dashboard.js
-        let usdcBalance = 0;
         try {
-            const { getArbUsdcBalanceRaw } = await import('./dashboard.js');
-            usdcBalance = await getArbUsdcBalanceRaw(getUserWallet(chatId));
-        } catch { usdcBalance = 0; }
+            const statusMsg = await ctx.reply(
+                l === 'ko' ? '_ARB 지갑 잔고 확인 중..._' : '_Checking ARB wallet balance..._',
+                { parse_mode: 'Markdown' }
+            );
 
-        await ctx.telegram.deleteMessage(chatId, statusMsg.message_id).catch(() => { });
+            let usdcBalance = 0;
+            try {
+                const { getArbUsdcBalanceRaw } = await import('./dashboard.js');
+                usdcBalance = await getArbUsdcBalanceRaw(getUserWallet(chatId));
+            } catch { usdcBalance = 0; }
 
-        const balStr = `$${usdcBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            await ctx.telegram.deleteMessage(chatId, statusMsg.message_id).catch(() => { });
 
-        const promptText =
-            `\ud83c\udfe6 *\uc0b4\uc804 \uc7a5\uc804 (Deposit)*\n\n` +
-            `\ud83d\udcb5 \uad80\ud558\uc758 \uc544\ube44\ud2b8\ub7fc \uc9c0\uac11 \uc794\uace0: *${balStr} USDC*\n\n` +
-            `\ud83d\udc47 \ud558\uc774\ud37c\ub9ac\ud034\ub4dc \uc5d4\uc9c4\uc73c\ub85c \uc1a1\uae08\ud560 \uae08\uc561\uc744 \uc120\ud0dd\ud558\uac70\ub098\n` +
-            `\ucc44\ud305\ucc3d\uc5d0 *\uc22b\uc790*\ub97c \uc785\ub825\ud558\uc138\uc694. _(\uc608: 500)_`;
+            const balStr = `$${usdcBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-        const promptMsg = await ctx.reply(promptText, {
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [[
-                    { text: '25%', callback_data: 'deposit_pct:25' },
-                    { text: '50%', callback_data: 'deposit_pct:50' },
-                    { text: '100% (MAX)', callback_data: 'deposit_pct:100' },
-                    { text: '\u274c \ucde8\uc18c', callback_data: 'deposit_cancel' },
-                ]],
-            },
-        });
+            const promptText =
+                `\ud83c\udfe6 *\uc0b4\uc804 \uc7a5\uc804 (Deposit)*\n\n` +
+                `\ud83d\udcb5 \uad80\ud558\uc758 \uc544\ube44\ud2b8\ub7fc \uc9c0\uac11 \uc794\uace0: *${balStr} USDC*\n\n` +
+                `\ud83d\udc47 \ud558\uc774\ud37c\ub9ac\ud034\ub4dc \uc5d4\uc9c4\uc73c\ub85c \uc1a1\uae08\ud560 \uae08\uc561\uc744 \uc120\ud0dd\ud558\uac70\ub098\n` +
+                `\ucc44\ud305\ucc3d\uc5d0 *\uc22b\uc790*\ub97c \uc785\ub825\ud558\uc138\uc694. _(\uc608: 500)_`;
 
-        // Store pending state so the text handler and callback handler can pick it up
-        depositPending.set(chatId, { usdcBalance, promptMsgId: promptMsg.message_id });
+            const promptMsg = await ctx.reply(promptText, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: '25%', callback_data: 'deposit_pct:25' },
+                        { text: '50%', callback_data: 'deposit_pct:50' },
+                        { text: '100% (MAX)', callback_data: 'deposit_pct:100' },
+                        { text: '\u274c \ucde8\uc18c', callback_data: 'deposit_cancel' },
+                    ]],
+                },
+            });
+
+            depositPending.set(chatId, { usdcBalance, promptMsgId: promptMsg.message_id });
+        } catch (err) {
+            // Clear state so user can retry immediately without zombie session
+            depositPending.delete(chatId);
+            console.error('[DEPOSIT] handleDeposit error:', err.message);
+            ctx.reply(l === 'ko'
+                ? '❌ 잠시 통신 오류가 발생했습니다. 다시 눌러주세요.'
+                : '❌ Network hiccup. Please try again.'
+            ).catch(() => { });
+        }
     };
     bot.command('deposit', handleDeposit);
     bot.hears(/^\ud83d\udce5/, handleDeposit);
@@ -395,6 +406,8 @@ export async function startBot() {
             }
         } catch (err) {
             // ── 상황 C: unexpected system/code error ──────────────────────────
+            // Always clear pending state so user can retry
+            depositPending.delete(chatId);
             console.error('[DEPOSIT] runDepositFlow unhandled error:', err.message);
             const rawMsg = (err?.message || '').toLowerCase();
             if (rawMsg.includes('insufficient funds') || rawMsg.includes('insufficient_funds') ||
