@@ -151,7 +151,7 @@ async function buildDashboard(session) {
     const pnlPct = `${pnlSign}${pnl.toFixed(2)}%`;
     const pnlEmoji = pnl >= 0 ? '🟢' : '🔴';
 
-    const net = isTestnet ? 'TESTNET' : 'MAINNET 🔴';
+    const net = isTestnet ? '⚠️ TESTNET' : 'MAINNET (LIVE ⚡️)';
 
     const algoLabel = session.gridCount > 0
         ? `Grid Bot (${session.gridCount} Grids)`
