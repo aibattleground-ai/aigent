@@ -86,11 +86,11 @@ async function getArbUsdcBalance(walletAddress) {
     const USDC_ARB_MAINNET = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
     const ABI = ['function balanceOf(address) view returns (uint256)'];
 
-    // Three reliable RPCs — whichever responds first wins
+    // Three reliable RPCs in priority order — 1rpc.io and llamarpc are rate-limit tolerant
     const RPCS = [
-        'https://rpc.ankr.com/arbitrum',
-        'https://arbitrum.llamarpc.com',
-        'https://arb1.arbitrum.io/rpc',
+        'https://1rpc.io/arb',               // 1RPC — privacy-focused, no rate-limit for free
+        'https://arbitrum.llamarpc.com',      // LlamaRPC — generous free tier
+        'https://arb1.arbitrum.io/rpc',       // Official Arbitrum (strict rate-limit fallback)
     ];
 
     try {
@@ -118,17 +118,19 @@ async function getArbUsdcBalance(walletAddress) {
 }
 
 /**
- * Fetches USDC balance inside Hyperliquid exchange (clearinghouse state).
- * This is the user's HL perpetuals account balance — separate from on-chain.
+ * Fetches HL clearinghouse state in ONE call — returns both balance AND real PnL.
+ * PnL comes from actual assetPositions, never from simulated/fake data.
  *
- * @param {string} walletAddress  — EVM address of the user's wallet
- * @returns {Promise<string>}  e.g. '$1,234.56' or '$0.00 (N/A)'
+ * @param {string} walletAddress
+ * @param {string} asset  e.g. 'ETH'
+ * @returns {Promise<{ balance: string, pnlStr: string, pnlEmoji: string }>}
  */
-async function getHlBalance(walletAddress) {
-    if (!walletAddress) return '$0.00 (No Wallet)';
+async function getHlState(walletAddress, asset) {
+    const EMPTY = { balance: '$0.00', pnlStr: '— (No position)', pnlEmoji: '⚪' };
+    if (!walletAddress) return EMPTY;
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3_000);
+    const timer = setTimeout(() => controller.abort(), 4_000);
 
     try {
         const res = await fetch('https://api.hyperliquid.xyz/info', {
@@ -139,18 +141,36 @@ async function getHlBalance(walletAddress) {
         });
         clearTimeout(timer);
 
-        if (!res.ok) return '$0.00 (N/A)';
+        if (!res.ok) return EMPTY;
         const data = await res.json();
 
-        // marginSummary.accountValue is the total USDC equity in the account
+        // ── Account equity ────────────────────────────────────────────────────
         const equity = parseFloat(data?.marginSummary?.accountValue ?? '0');
-        if (isNaN(equity)) return '$0.00 (N/A)';
+        const balance = isNaN(equity)
+            ? '$0.00'
+            : `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-        return `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        // ── Real position PnL for the requested asset ─────────────────────────
+        // assetPositions: [{ position: { coin, unrealizedPnl, returnOnEquity, ... } }]
+        const positions = data?.assetPositions ?? [];
+        const pos = positions.find(p => p?.position?.coin === asset);
+
+        if (!pos) {
+            // No open position — show honest zero, never fabricate data
+            return { balance, pnlStr: '— (No position)', pnlEmoji: '⚪' };
+        }
+
+        const upnl = parseFloat(pos.position.unrealizedPnl ?? '0');
+        const roe = parseFloat(pos.position.returnOnEquity ?? '0');
+        const sign = upnl >= 0 ? '+' : '';
+        const pnlStr = `${sign}$${Math.abs(upnl).toFixed(2)} (ROE ${(roe * 100).toFixed(2)}%)`;
+        const pnlEmoji = upnl >= 0 ? '🟢' : '🔴';
+
+        return { balance, pnlStr, pnlEmoji };
     } catch (err) {
         clearTimeout(timer);
-        console.warn('[DASHBOARD] HL balance error:', err.message);
-        return '$0.00 (HL Error)';
+        console.warn('[DASHBOARD] HL state error:', err.message);
+        return EMPTY;
     }
 }
 
@@ -199,23 +219,20 @@ function simulatePnL(session) {
 async function buildDashboard(session) {
     const isTestnet = session.isTestnet;
 
-    // Fetch all 3 data points INDEPENDENTLY — any one failing never blocks the others
+    // Fetch all data independently — any one failing never blocks the others
     let markPrice = null;
     let arbBalance = '$0.00 (RPC Error)';
-    let hlBalance = '$0.00 (N/A)';
+    let hlState = { balance: '$0.00', pnlStr: '—', pnlEmoji: '⚪' };
 
     try { markPrice = await getMarkPrice(session.asset); } catch { }
     try { arbBalance = await getArbUsdcBalance(session.walletAddress); } catch { }
-    try { hlBalance = await getHlBalance(session.walletAddress); } catch { }
+    try { hlState = await getHlState(session.walletAddress, session.asset); } catch { }
 
     const priceStr = markPrice
         ? `$${markPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         : 'N/A';
 
-    const pnl = simulatePnL(session);
-    const pnlSign = pnl >= 0 ? '+' : '';
-    const pnlPct = `${pnlSign}${pnl.toFixed(2)}%`;
-    const pnlEmoji = pnl >= 0 ? '🟢' : '🔴';
+    const { balance: hlBalance, pnlStr, pnlEmoji } = hlState;
 
     const net = isTestnet ? '⚠️ TESTNET' : 'MAINNET (LIVE ⚡️)';
 
@@ -236,7 +253,7 @@ async function buildDashboard(session) {
         `📈 *포지션 상태 (Hyperliquid)*\n` +
         `🪙 티커: *${session.asset}/USDC*\n` +
         `🎯 현재가 (Mark Px): *${priceStr}*\n` +
-        `🚀 수익률 (PnL): *${pnlPct}* ${pnlEmoji}\n\n` +
+        `🚀 수익률 (PnL): *${pnlStr}* ${pnlEmoji}\n\n` +
         `🕸️ 알고리즘: *${algoLabel}*\n` +
         (session.gridCount > 0 ? `📐 그리드 범위: ${rangeLabel}\n\n` : '\n') +
         `🔄 Last Sync: \`${timeStr()}\``
