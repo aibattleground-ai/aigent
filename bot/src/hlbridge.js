@@ -2,86 +2,102 @@
  * AIGENT — Hyperliquid L1 Bridge Deposit
  * File: bot/src/hlbridge.js
  *
- * Deposits USDC from the user's Arbitrum wallet into Hyperliquid exchange
- * via the official HL L1 bridge contract on Arbitrum One.
+ * All READ-ONLY blockchain calls use axios JSON-RPC to bypass Cloudflare WAF.
+ * ethers.js is used ONLY for transaction signing (Wallet + Contract.connect).
  *
  * Flow:
- *   1. Check ARB USDC balance (via axios eth_call — no ethers Provider needed)
- *   2. Approve bridge to spend USDC (ERC-20 approve)
- *   3. Call bridge.deposit(amount) to move USDC into HL
- *
- * Contract (Arbitrum One):
- *   - USDC:   0xaf88d065e77c8cC2239327C5EDb3A432268e5831
- *   - Bridge: 0x2Df1c51E09aECF9d8C4e3A049c9CE9E4E1b6A6a
+ *   1. [axios] Check ARB USDC balance
+ *   2. [axios] Check native ETH balance (gas pre-flight)
+ *   3. [ethers Wallet] Approve USDC spend
+ *   4. [ethers Wallet] Deposit via HL bridge
  */
 
 import { ethers } from 'ethers';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-// Official Arbitrum Native USDC (Circle)
-const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
-
-// Hyperliquid L1 bridge on Arbitrum One
+const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831'; // Arbitrum Native USDC
 const HL_BRIDGE_ADDRESS = '0x2Df1c51E09aECF9d8C4e3A049c9CE9E4E1b6A6a';
-
-// USDC has 6 decimals
 const USDC_DECIMALS = 6;
+const MIN_DEPOSIT_USDC = 1.0;
+const MIN_GAS_ETH = 0.00015; // ~2 Arbitrum txs
 
-// ABI fragments — only what we need
+// ABI fragments for signing only
 const USDC_ABI = [
-    'function balanceOf(address owner) view returns (uint256)',
     'function approve(address spender, uint256 amount) returns (bool)',
     'function allowance(address owner, address spender) view returns (uint256)',
 ];
+const BRIDGE_ABI = ['function deposit(uint64 amount) external'];
 
-const BRIDGE_ABI = [
-    'function deposit(uint64 amount) external',
-];
+// Official Arbitrum One RPC — used for tx signing (signed txs bypass WAF)
+const SIGNING_RPC = 'https://arb1.arbitrum.io/rpc';
 
-// RPCs in priority order (official first, no Alchemy demo — avoids 429)
-const RPC_LIST = [
+// RPC endpoints for axios read-only calls (WAF bypass via browser headers)
+const READ_RPCS = [
     'https://arb1.arbitrum.io/rpc',
     'https://arbitrum.llamarpc.com',
     'https://1rpc.io/arb',
 ];
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// Cloudflare-bypass headers that mimic a real browser
+const BROWSER_HEADERS = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Origin': 'https://arbiscan.io',
+    'Referer': 'https://arbiscan.io/',
+};
 
-/**
- * Returns a working JsonRpcProvider, trying each RPC in sequence.
- * Catches 429 (rate-limit) explicitly and moves to the next endpoint.
- */
-async function getProvider() {
-    for (const url of RPC_LIST) {
+// ── Axios JSON-RPC helpers ─────────────────────────────────────────────────────
+
+async function axiosPost(payload) {
+    const { default: axios } = await import('axios');
+    for (const rpc of READ_RPCS) {
         try {
-            const provider = new ethers.providers.JsonRpcProvider(url);
-            // 5s timeout on the connectivity check itself
-            await Promise.race([
-                provider.getBlockNumber(),
-                new Promise((_, rej) =>
-                    setTimeout(() => rej(new Error('connect timeout')), 5_000)
-                ),
-            ]);
-            return provider;
+            const res = await axios.post(rpc, payload, {
+                headers: BROWSER_HEADERS,
+                timeout: 5_000,
+            });
+            if (res.data?.result !== undefined) return res.data.result;
         } catch (err) {
-            const msg = err?.message ?? '';
-            const is429 = msg.includes('429') || msg.includes('rate') || msg.includes('Too Many');
-            console.warn(`[HLBRIDGE] RPC ${url} failed${is429 ? ' (429)' : ''}: ${msg}`);
-            // continue to next RPC
+            console.warn(`[HLBRIDGE] read RPC ${rpc} failed: ${err.message}`);
         }
     }
-    throw new Error(
-        '❌ 네트워크 지연 발생\n\n' +
-        '블록체인 네트워크 혼잡으로 잔고를 확인할 수 없습니다.\n' +
-        '잠시 후 다시 시도해 주세요.'
-    );
+    throw new Error('All read RPCs failed');
 }
 
-/** Formats USDC raw BigNumber to a readable string */
-function fmtUsdc(raw) {
-    const n = Number(ethers.BigNumber.from(raw)) / 10 ** USDC_DECIMALS;
-    return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** Returns USDC balance as a number (e.g. 1234.56). */
+async function getUsdcBalance(address) {
+    const padded = address.replace('0x', '').toLowerCase().padStart(64, '0');
+    const hex = await axiosPost({
+        jsonrpc: '2.0', id: 1, method: 'eth_call',
+        params: [{ to: USDC_ADDRESS, data: `0x70a08231${padded}` }, 'latest'],
+    });
+    if (!hex || hex === '0x' || hex === '0x0') return 0;
+    return Number(BigInt(hex)) / 10 ** USDC_DECIMALS;
+}
+
+/** Returns native ETH balance as a number. */
+async function getEthBalance(address) {
+    const hex = await axiosPost({
+        jsonrpc: '2.0', id: 2, method: 'eth_getBalance',
+        params: [address, 'latest'],
+    });
+    if (!hex || hex === '0x') return 0;
+    return Number(BigInt(hex)) / 1e18;
+}
+
+/** Returns current USDC allowance for the bridge as a BigNumber string. */
+async function getAllowance(owner) {
+    // allowance(address,address) = 0xdd62ed3e + owner 32B + spender 32B
+    const ownerPad = owner.replace('0x', '').toLowerCase().padStart(64, '0');
+    const spenderPad = HL_BRIDGE_ADDRESS.replace('0x', '').toLowerCase().padStart(64, '0');
+    const hex = await axiosPost({
+        jsonrpc: '2.0', id: 3, method: 'eth_call',
+        params: [{ to: USDC_ADDRESS, data: `0xdd62ed3e${ownerPad}${spenderPad}` }, 'latest'],
+    });
+    if (!hex || hex === '0x') return ethers.BigNumber.from(0);
+    return ethers.BigNumber.from(hex);
 }
 
 // ── Main Export ────────────────────────────────────────────────────────────────
@@ -91,52 +107,43 @@ function fmtUsdc(raw) {
  *
  * @param {string} privateKey - User's decrypted EVM private key
  * @param {Object} opts
- * @param {number} [opts.amountUsdc]   - Specific USDC amount. If omitted → use full balance
- * @param {Function} [opts.onProgress] - Called with status string updates during execution
- *
- * @returns {Promise<{
- *   success: boolean,
- *   depositedUsdc: string,   // formatted e.g. "123.45"
- *   approveTxHash: string,
- *   depositTxHash: string,
- *   error?: string,
- * }>}
+ * @param {number} [opts.amountUsdc]   - Specific USDC amount. If omitted → full balance
+ * @param {Function} [opts.onProgress] - Called with status strings during execution
  */
 export async function depositToHyperliquid(privateKey, opts = {}) {
     const { amountUsdc, onProgress = () => { } } = opts;
 
-    onProgress('🔌 Connecting to Arbitrum network...');
-
-    const provider = await getProvider();
-    const wallet = new ethers.Wallet(privateKey, provider);
-    const address = wallet.address;
-
-    // ── Step 1: Check USDC balance ─────────────────────────────────────────────
+    // ── Step 1: Check USDC balance (axios) ────────────────────────────────────
     onProgress('🔍 Checking vault USDC balance...');
 
-    const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, wallet);
-    const rawBalance = await usdc.balanceOf(address);
-    const usdcBalance = Number(rawBalance) / 10 ** USDC_DECIMALS;
+    let usdcBalance;
+    try {
+        usdcBalance = await getUsdcBalance(
+            new ethers.Wallet(privateKey).address
+        );
+    } catch (err) {
+        console.error('[HLBRIDGE] USDC balance check failed:', err.message);
+        return {
+            success: false,
+            error: '❌ 네트워크 지연 발생\n\n블록체인 네트워크 혼잡으로 잔고를 확인할 수 없습니다.\n잠시 후 다시 시도해 주세요.',
+        };
+    }
 
     if (usdcBalance < MIN_DEPOSIT_USDC) {
         return {
             success: false,
-            error: `Insufficient balance: $${usdcBalance.toFixed(2)} USDC (minimum $${MIN_DEPOSIT_USDC})`,
+            error: `잔고 부족: $${usdcBalance.toFixed(2)} USDC (최소 $${MIN_DEPOSIT_USDC} 이상)`,
         };
     }
 
-    // ── Step 1.5: Pre-flight ETH gas check (ABORT on failure) ────────────────
-    // If this fails we MUST abort — proceeding with 0 ETH hangs the tx forever.
+    const wallet = new ethers.Wallet(privateKey, new ethers.providers.JsonRpcProvider(SIGNING_RPC));
+    const address = wallet.address;
+
+    // ── Step 2: ETH gas pre-flight (axios) ────────────────────────────────────
     onProgress('⛽ Checking gas (ETH) balance...');
 
     try {
-        const ethRaw = await Promise.race([
-            provider.getBalance(address),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('ETH balance check timeout')), 5_000)),
-        ]);
-        const ethBalance = Number(ethers.utils.formatEther(ethRaw));
-        const MIN_GAS_ETH = 0.00015; // ~2 txs on Arbitrum at normal gas
-
+        const ethBalance = await getEthBalance(address);
         if (ethBalance < MIN_GAS_ETH) {
             return {
                 success: false,
@@ -148,77 +155,47 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
             };
         }
     } catch (err) {
-        // 429, timeout, or any network error — ABORT immediately, don't proceed
+        // ETH check failed — abort (don't proceed with potentially zero gas)
         console.error('[HLBRIDGE] ETH balance check ABORTED:', err.message);
         return {
             success: false,
-            error:
-                `❌ 네트워크 지연 발생\n\n` +
-                `블록체인 네트워크 혼잡으로 잔고를 확인할 수 없습니다.\n` +
-                `잠시 후 다시 시도해 주세요.`,
+            error: '❌ 네트워크 지연 발생\n\n블록체인 네트워크 혼잡으로 잔고를 확인할 수 없습니다.\n잠시 후 다시 시도해 주세요.',
         };
     }
 
     const depositAmt = amountUsdc ? Math.min(amountUsdc, usdcBalance) : usdcBalance;
-    const rawDepositAmt = ethers.BigNumber.from(
-        Math.floor(depositAmt * 10 ** USDC_DECIMALS)
-    );
+    const rawDepositAmt = ethers.BigNumber.from(Math.floor(depositAmt * 10 ** USDC_DECIMALS));
 
     onProgress(`💵 Preparing to deposit $${depositAmt.toFixed(2)} USDC → Hyperliquid...`);
 
-    // ── Step 2: Approve bridge to spend USDC ──────────────────────────────────
+    // ── Step 3: Approve bridge (ethers signer — signed tx bypasses WAF) ────────
     onProgress('✍️ Signing Approval transaction (1/2)...');
 
-    const currentAllowance = await usdc.allowance(address, HL_BRIDGE_ADDRESS);
+    try {
+        const currentAllowance = await getAllowance(address);
 
-    let approveTxHash = '(already approved)';
-    if (currentAllowance.lt(rawDepositAmt)) {
-        try {
-            const approveTx = await usdc.approve(HL_BRIDGE_ADDRESS, rawDepositAmt, {
-                gasLimit: 100_000,
-            });
+        let approveTxHash = '(already approved)';
+        if (currentAllowance.lt(rawDepositAmt)) {
+            const usdc = new ethers.Contract(USDC_ADDRESS, USDC_ABI, wallet);
+            const approveTx = await usdc.approve(HL_BRIDGE_ADDRESS, rawDepositAmt, { gasLimit: 100_000 });
             onProgress('⏳ Approval tx broadcast — waiting for confirmation...');
-            const approveReceipt = await approveTx.wait(1);
-            if (approveReceipt.status !== 1) {
-                return { success: false, error: 'Approval transaction reverted.' };
-            }
+            const rec = await approveTx.wait(1);
+            if (rec.status !== 1) return { success: false, error: 'Approval transaction reverted.' };
             approveTxHash = approveTx.hash;
             onProgress(`✅ Approved! Tx: ${approveTxHash.slice(0, 10)}...`);
-        } catch (err) {
-            console.error('[HLBRIDGE] Approve failed:', err.message);
-            const msg = (err?.message || '').toLowerCase();
-            if (msg.includes('insufficient funds') || msg.includes('gas') || msg.includes('fee')) {
-                return {
-                    success: false,
-                    error:
-                        `⛽ 가스비(ETH) 부족\n\n` +
-                        `송금(Approve) 트랜잭션을 처리할 ETH 가스비가 없습니다.\n` +
-                        `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.`,
-                };
-            }
-            return { success: false, error: `Approval failed: ${err.message}` };
+        } else {
+            onProgress('✅ Bridge already approved. Skipping approval.');
         }
-    } else {
-        onProgress('✅ Bridge already approved for this amount. Skipping approval.');
-    }
 
-    // ── Step 3: Call bridge.deposit(amount) ───────────────────────────────────
-    onProgress('🚀 Signing Deposit transaction (2/2)...');
+        // ── Step 4: Deposit (ethers signer) ───────────────────────────────────
+        onProgress('🚀 Signing Deposit transaction (2/2)...');
 
-    const bridge = new ethers.Contract(HL_BRIDGE_ADDRESS, BRIDGE_ABI, wallet);
-
-    // Bridge takes uint64 = USDC in raw units (6 decimals)
-    const rawUint64 = rawDepositAmt.toNumber(); // safe: max USDC << 2^64
-
-    try {
-        const depositTx = await bridge.deposit(rawUint64, {
-            gasLimit: 200_000,
-        });
-
+        const bridge = new ethers.Contract(HL_BRIDGE_ADDRESS, BRIDGE_ABI, wallet);
+        const depositTx = await bridge.deposit(rawDepositAmt.toNumber(), { gasLimit: 200_000 });
         onProgress('⏳ Deposit tx broadcast — waiting for confirmation...');
-        const depositReceipt = await depositTx.wait(1);
+        const depositRec = await depositTx.wait(1);
 
-        if (depositReceipt.status !== 1) {
+        if (depositRec.status !== 1) {
             return { success: false, error: 'Deposit transaction reverted.', approveTxHash };
         }
 
@@ -228,18 +205,20 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
             approveTxHash,
             depositTxHash: depositTx.hash,
         };
+
     } catch (err) {
-        console.error('[HLBRIDGE] Deposit failed:', err.message);
+        console.error('[HLBRIDGE] Tx failed:', err.message);
         const msg = (err?.message || '').toLowerCase();
-        if (msg.includes('insufficient funds') || msg.includes('gas') || msg.includes('fee')) {
+        if (msg.includes('insufficient funds') || msg.includes('intrinsic gas') ||
+            msg.includes('insufficient_funds')) {
             return {
                 success: false,
                 error:
                     `⛽ 가스비(ETH) 부족\n\n` +
-                    `송금(Deposit) 트랜잭션을 처리할 ETH 가스비가 없습니다.\n` +
+                    `트랜잭션을 처리할 ETH 가스비가 없습니다.\n` +
                     `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.`,
             };
         }
-        return { success: false, error: `Deposit failed: ${err.message}`, approveTxHash };
+        return { success: false, error: `Transaction failed: ${err.message}` };
     }
 }

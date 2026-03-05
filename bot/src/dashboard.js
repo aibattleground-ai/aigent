@@ -9,32 +9,12 @@
  * Mark price:   fetched from Hyperliquid public REST API with 5s timeout
  */
 
-import { ethers } from 'ethers';
 
 // ── Session Store ─────────────────────────────────────────────────────────────
 const sessions = new Map();
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const UPDATE_INTERVAL_MS = 60_000;
-const FETCH_TIMEOUT_MS = 5_000;
-
-// USDC contract addresses
-const USDC = {
-    mainnet: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',  // Arbitrum One
-    testnet: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',  // Arbitrum Sepolia
-};
-
-// Public RPC fallbacks (used when ARB_RPC_URL not set, or as backup)
-const RPC = {
-    mainnet: 'https://arb1.arbitrum.io/rpc',
-    testnet: 'https://sepolia-rollup.arbitrum.io/rpc',
-};
-
-// Minimal ERC-20 ABI for balanceOf
-const ERC20_ABI = [
-    'function balanceOf(address owner) view returns (uint256)',
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -42,32 +22,6 @@ const pad = (n) => String(n).padStart(2, '0');
 function timeStr() {
     const d = new Date();
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-// Multiple fast public RPC endpoints — resolved via Promise.any (fastest wins)
-const ARB_RPCS = [
-    'https://rpc.ankr.com/arbitrum',             // Ankr — fast & reliable
-    'https://arbitrum.llamarpc.com',              // LlamaRPC — fast 
-    'https://arb1.arbitrum.io/rpc',               // Official Arbitrum (slower fallback)
-];
-const ARB_TESTNET_RPC = 'https://sepolia-rollup.arbitrum.io/rpc';
-
-/**
- * Returns a provider backed by whichever of the ARB_RPCS responds first.
- * Falls back to single RPC on testnet.
- */
-async function getFastProvider(isTestnet) {
-    if (isTestnet) {
-        return new ethers.providers.JsonRpcProvider(ARB_TESTNET_RPC);
-    }
-    // Use env RPC if configured, otherwise race public RPCs
-    const envUrl = process.env.ARB_RPC_URL;
-    if (envUrl && !envUrl.includes('YOUR_KEY')) {
-        return new ethers.providers.JsonRpcProvider(envUrl);
-    }
-    // Race all public RPCs — first to connect wins
-    const providers = ARB_RPCS.map(url => new ethers.providers.JsonRpcProvider(url));
-    return providers[0]; // return first synchronously; contract call will race internally
 }
 
 /**
