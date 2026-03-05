@@ -249,9 +249,8 @@ export async function startBot() {
         // Fetch ARB USDC balance using the same axios eth_call function from dashboard.js
         let usdcBalance = 0;
         try {
-            const { getArbUsdcBalance } = await import('./dashboard.js');
-            const raw = await getArbUsdcBalance(getUserWallet(chatId));
-            usdcBalance = parseFloat(raw.replace(/[^0-9.]/g, '')) || 0;
+            const { getArbUsdcBalanceRaw } = await import('./dashboard.js');
+            usdcBalance = await getArbUsdcBalanceRaw(getUserWallet(chatId));
         } catch { usdcBalance = 0; }
 
         await ctx.telegram.deleteMessage(chatId, statusMsg.message_id).catch(() => { });

@@ -80,7 +80,7 @@ async function getFastProvider(isTestnet) {
  * @param {string} walletAddress
  * @returns {Promise<string>}  e.g. '$1,234.56' or '$0.00 (RPC Error)'
  */
-async function getArbUsdcBalance(walletAddress) {
+export async function getArbUsdcBalance(walletAddress) {
     if (!walletAddress) return '$0.00 (No Wallet)';
 
     // Arbitrum Native USDC — hardcoded, never changes
@@ -146,6 +146,57 @@ async function getArbUsdcBalance(walletAddress) {
     return '$0.00 (RPC Error)';
 }
 
+/**
+ * Same logic as getArbUsdcBalance but returns a plain number (e.g. 1234.56).
+ * Used by the deposit prompt — no fragile string-to-number re-parsing needed.
+ * USDC decimals = 6 (ethers.utils.formatUnits equivalent: raw / 1e6).
+ * Returns 0 on any error.
+ *
+ * @param {string} walletAddress
+ * @returns {Promise<number>}
+ */
+export async function getArbUsdcBalanceRaw(walletAddress) {
+    if (!walletAddress) return 0;
+
+    const USDC_CONTRACT = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
+    const paddedAddr = walletAddress.replace('0x', '').toLowerCase().padStart(64, '0');
+    const callData = `0x70a08231${paddedAddr}`;
+
+    const HEADERS = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Origin': 'https://arbiscan.io',
+        'Referer': 'https://arbiscan.io/',
+    };
+
+    const PAYLOAD = {
+        jsonrpc: '2.0', id: 1, method: 'eth_call',
+        params: [{ to: USDC_CONTRACT, data: callData }, 'latest'],
+    };
+
+    const RPCS = [
+        'https://arb-mainnet.g.alchemy.com/v2/demo',
+        'https://1rpc.io/arb',
+        'https://arbitrum.llamarpc.com',
+        'https://arb1.arbitrum.io/rpc',
+    ];
+
+    const { default: axios } = await import('axios');
+
+    for (const rpc of RPCS) {
+        try {
+            const res = await axios.post(rpc, PAYLOAD, { headers: HEADERS, timeout: 4000 });
+            const hex = res.data?.result;
+            if (!hex || hex === '0x' || hex === '0x0') return 0;
+            // USDC decimals = 6 → divide by 1_000_000 (same as ethers.utils.formatUnits(raw, 6))
+            return Number(BigInt(hex)) / 1_000_000;
+        } catch {
+            // try next RPC
+        }
+    }
+    return 0;
+}
 
 /**
  * Fetches HL clearinghouse state in ONE call — returns both balance AND real PnL.
