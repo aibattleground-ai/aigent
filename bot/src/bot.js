@@ -11,6 +11,7 @@ import { initDB, insertTrade, getTradesByChatId, generateSyncCode } from './db.j
 import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivateKey } from './users.js';
 import { t, LANGUAGES } from './i18n.js';
 import { startDepositMonitor } from './deposit.js';
+import { depositToHyperliquid } from './hlbridge.js';
 
 // ── In-memory state ────────────────────────────────────────────────────────────
 const gridSessions = new Map();    // chatId → { asset, stats }
@@ -41,11 +42,16 @@ const ONBOARDING_GIF = 'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.g
  */
 function replyKeyboard(l) {
     return {
-        keyboard: [[
-            { text: t(l, 'btn_dashboard') },
-            { text: t(l, 'btn_withdraw') },
-            { text: t(l, 'btn_settings') },
-        ]],
+        keyboard: [
+            [
+                { text: t(l, 'btn_dashboard') },
+                { text: t(l, 'btn_withdraw') },
+            ],
+            [
+                { text: t(l, 'btn_deposit') },
+                { text: t(l, 'btn_settings') },
+            ],
+        ],
         resize_keyboard: true,
         one_time_keyboard: false,
         is_persistent: true,
@@ -75,6 +81,7 @@ async function registerCommands(bot) {
     await bot.telegram.setMyCommands([
         { command: 'start', description: '🚀 시작 및 다국어 설정 / Get started' },
         { command: 'dashboard', description: '📊 실시간 자산/포지션 터미널' },
+        { command: 'deposit', description: '📥 ARB USDC → Hyperliquid 취로 입금' },
         { command: 'withdraw', description: '💸 지갑 자금 출금 안내' },
         { command: 'export_key', description: '🔑 프라이빗 키 백업 (MetaMask)' },
         { command: 'wallet', description: '🏦 내 지갑 주소 확인' },
@@ -198,6 +205,66 @@ export async function startBot() {
     bot.command('withdraw', handleWithdraw);
     bot.hears(/^💸/, handleWithdraw);
 
+    // ── 📥 Deposit → Hyperliquid ──────────────────────────────────────────────
+    const handleDeposit = async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        const l = lang(chatId);
+        if (!await requireWallet(ctx)) return;
+
+        // Send initial loading message — edit it live as progress comes in
+        const loadingMsg = await ctx.reply(
+            t(l, 'deposit_loading'),
+            { parse_mode: 'Markdown', disable_web_page_preview: true }
+        );
+
+        const editProgress = async (text) => {
+            try {
+                await ctx.telegram.editMessageText(
+                    chatId, loadingMsg.message_id, null,
+                    t(l, 'deposit_loading') + `\n\n⏱️ _${text}_`,
+                    { parse_mode: 'Markdown', disable_web_page_preview: true }
+                );
+            } catch { /* message unchanged — ignore */ }
+        };
+
+        try {
+            const privateKey = getUserPrivateKey(chatId);
+
+            const result = await depositToHyperliquid(privateKey, {
+                onProgress: editProgress,
+            });
+
+            if (result.success) {
+                await ctx.telegram.editMessageText(
+                    chatId, loadingMsg.message_id, null,
+                    t(l, 'deposit_success', {
+                        amount: result.depositedUsdc,
+                        txHash: result.depositTxHash,
+                    }),
+                    { parse_mode: 'Markdown', disable_web_page_preview: true }
+                );
+                // Refresh dashboard so user sees updated HL balance immediately
+                setTimeout(() => handleDashboard(ctx), 3000);
+            } else {
+                await ctx.telegram.editMessageText(
+                    chatId, loadingMsg.message_id, null,
+                    t(l, 'deposit_error', { error: result.error }),
+                    { parse_mode: 'Markdown' }
+                );
+            }
+        } catch (err) {
+            console.error('[DEPOSIT] handleDeposit error:', err.message);
+            await ctx.telegram.editMessageText(
+                chatId, loadingMsg.message_id, null,
+                t(l, 'deposit_error', { error: err.message }),
+                { parse_mode: 'Markdown' }
+            ).catch(() => { });
+        }
+    };
+    bot.command('deposit', handleDeposit);
+    bot.hears(/^📥/, handleDeposit);
+
+
     // ── /export_key ───────────────────────────────────────────────────────────
     const handleExportKey = async (ctx) => {
         const chatId = String(ctx.chat.id);
@@ -314,6 +381,8 @@ export async function startBot() {
         if (DASHBOARD_KEYWORDS.some(k => userText.includes(k))) return handleDashboard(ctx);
         if (WITHDRAW_KEYWORDS.some(k => userText.includes(k))) return handleWithdraw(ctx);
         if (SETTINGS_KEYWORDS.some(k => userText.includes(k))) return handleExportKey(ctx);
+        const DEPOSIT_KEYWORDS   = ['거래소로 송금', 'Fund Exchange', 'Enviar al Exchange', '转入交易所', '取引所へ入金', '📥'];
+        if (DEPOSIT_KEYWORDS.some(k   => userText.includes(k))) return handleDeposit(ctx);
 
 
         const chatId = String(ctx.chat.id);

@@ -82,6 +82,19 @@ const MESSAGES = {
         btn_dashboard: `📊 Dashboard`,
         btn_withdraw: `💸 Withdraw`,
         btn_settings: `⚙️ Settings & Key`,
+        btn_deposit: `📥 Fund Exchange`,
+
+        deposit_loading:
+            `🚀 *Loading funds into Hyperliquid engine...*\n\n` +
+            `📍 Step-by-step updates below.\n` +
+            `_(Estimated time: 10–30 seconds)_`,
+        deposit_success:
+            `✅ *Deposit Complete!*\n\n` +
+            `💵 *{{amount}} USDC* transferred to Hyperliquid.\n` +
+            `🔗 Deposit Tx: [View on Arbiscan](https://arbiscan.io/tx/{{txHash}})\n\n` +
+            `⚡️ Funds are live. You may now issue trading commands.`,
+        deposit_error:
+            `❌ *Deposit Failed*\n\n{{error}}`,
 
         withdraw_title: `💸 *Withdraw Funds*`,
         withdraw_body:
@@ -166,6 +179,19 @@ const MESSAGES = {
         btn_dashboard: `📊 대시보드`,
         btn_withdraw: `💸 출금하기`,
         btn_settings: `⚙️ 세팅 및 키 백업`,
+        btn_deposit: `📥 거래소로 송금`,
+
+        deposit_loading:
+            `🚀 *총알을 하이퍼리퀴드 엔진으로 장전 중입니다.*\n\n` +
+            `📍 아래에서 단계별 진행 상황을 확인하세요.\n` +
+            `_(예상 소요 시간: 10~30초)_`,
+        deposit_success:
+            `✅ *입금 완료!*\n\n` +
+            `💵 *{{amount}} USDC*가 하이퍼리퀴드로 이전됐습니다.\n` +
+            `🔗 입금 Tx: [Arbiscan에서 확인](https://arbiscan.io/tx/{{txHash}})\n\n` +
+            `⚡️ 자금 장전 완료. 이제 매매 명령을 하달하십시오!`,
+        deposit_error:
+            `❌ *입금 실패*\n\n{{error}}`,
 
         withdraw_title: `💸 *출금하기*`,
         withdraw_body:
@@ -250,6 +276,19 @@ const MESSAGES = {
         btn_dashboard: `📊 Panel en Vivo`,
         btn_withdraw: `💸 Retirar`,
         btn_settings: `⚙️ Config & Clave`,
+        btn_deposit: `📥 Enviar al Exchange`,
+
+        deposit_loading:
+            `🚀 *Cargando fondos al motor Hyperliquid...*\n\n` +
+            `📍 Actualizaciones paso a paso abajo.\n` +
+            `_(Tiempo estimado: 10–30 segundos)_`,
+        deposit_success:
+            `✅ *¡Depósito Completado!*\n\n` +
+            `💵 *{{amount}} USDC* transferidos a Hyperliquid.\n` +
+            `🔗 Tx: [Ver en Arbiscan](https://arbiscan.io/tx/{{txHash}})\n\n` +
+            `⚡️ Fondos en vivo. Ya puedes emitir comandos de trading.`,
+        deposit_error:
+            `❌ *Depósito Fallido*\n\n{{error}}`,
 
         withdraw_title: `💸 *Retirar Fondos*`,
         withdraw_body:
@@ -334,6 +373,19 @@ const MESSAGES = {
         btn_dashboard: `📊 实时终端`,
         btn_withdraw: `💸 提款`,
         btn_settings: `⚙️ 设置和密钥`,
+        btn_deposit: `📥 转入交易所`,
+
+        deposit_loading:
+            `🚀 *正在将资金注入 Hyperliquid 引擎...*\n\n` +
+            `📍 请在下方查看逐步进度。\n` +
+            `_(预计耗时：10–30 秒)_`,
+        deposit_success:
+            `✅ *充值完成！*\n\n` +
+            `💵 *{{amount}} USDC* 已转入 Hyperliquid。\n` +
+            `🔗 Tx: [在 Arbiscan 查看](https://arbiscan.io/tx/{{txHash}})\n\n` +
+            `⚡️ 资金已就位，可以下达交易指令！`,
+        deposit_error:
+            `❌ *充值失败*\n\n{{error}}`,
 
         withdraw_title: `💸 *提款*`,
         withdraw_body:
@@ -418,6 +470,19 @@ const MESSAGES = {
         btn_dashboard: `📊 ダッシュボード`,
         btn_withdraw: `💸 出金する`,
         btn_settings: `⚙️ 設定と鍵`,
+        btn_deposit: `📥 取引所へ入金`,
+
+        deposit_loading:
+            `🚀 *Hyperliquid エンジンへ資金を注入中...*\n\n` +
+            `📍 以下でステップごとの進捗を確認してください。\n` +
+            `_(所要時間の目安：10〜30秒)_`,
+        deposit_success:
+            `✅ *入金完了！*\n\n` +
+            `💵 *{{amount}} USDC* が Hyperliquid に転送されました。\n` +
+            `🔗 Tx: [Arbiscan で確認](https://arbiscan.io/tx/{{txHash}})\n\n` +
+            `⚡️ 資金投入完了。取引命令を下してください！`,
+        deposit_error:
+            `❌ *入金失敗*\n\n{{error}}`,
 
         withdraw_title: `💸 *出金*`,
         withdraw_body:
