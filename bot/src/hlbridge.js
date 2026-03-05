@@ -22,7 +22,7 @@ import { ethers } from 'ethers';
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
-const HL_BRIDGE_ADDRESS = ethers.utils.getAddress('0x2Df1c51E09aECF9d8C4e3A049c9CE9E4E1b6A6a');
+const HL_BRIDGE_ADDRESS = '0x2Df1c51E09aECF9cacB7bc98cB1742757f163dF7';
 const USDC_DECIMALS = 6;
 const ARB_CHAIN_ID = 42161;        // Arbitrum One
 const MIN_DEPOSIT_USDC = 1.0;
