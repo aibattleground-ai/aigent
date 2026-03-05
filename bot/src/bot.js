@@ -25,8 +25,13 @@ const LANG_KEYBOARD = {
     ], [
         { text: '🇪🇸 Español', callback_data: 'lang:es' },
         { text: '🇨🇳 中文', callback_data: 'lang:zh' },
+    ], [
+        { text: '🇯🇵 日本語', callback_data: 'lang:ja' },
     ]],
 };
+
+/** Cyberpunk/AI GIF shown before the onboarding welcome message */
+const ONBOARDING_GIF = 'https://media.giphy.com/media/LmNwrBhejkK9EFP504/giphy.gif';
 
 /**
  * Builds the persistent bottom Reply Keyboard in the user's language.
@@ -121,6 +126,9 @@ export function startBot() {
             const { walletAddress } = await onboardUser(chatId, selectedLang);
             updateLanguage(chatId, selectedLang);
             await ctx.telegram.deleteMessage(chatId, genMsg.message_id).catch(() => { });
+
+            // Send cyberpunk AI GIF first for visual impact
+            await ctx.telegram.sendAnimation(chatId, ONBOARDING_GIF).catch(() => { });
 
             // Welcome + show persistent bottom keyboard
             await ctx.reply(
