@@ -396,302 +396,312 @@ export async function startBot() {
         } catch (err) {
             // ── 상황 C: unexpected system/code error ──────────────────────────
             console.error('[DEPOSIT] runDepositFlow unhandled error:', err.message);
-            await showError(
-                `❌ *일시적인 통신 오류가 발생했습니다.*\n\n` +
-                `블록체인 네트워크 혼잡으로 인해 처리가 지연되고 있습니다.\n` +
-                `귀하의 자금은 안전하며, 잠시 후 다시 시도해 주시기 바랍니다.`
-            ).catch(() => { });
-        }
-    };
-
-    // ── /export_key ───────────────────────────────────────────────────────────
-    const handleExportKey = async (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const l = lang(chatId);
-        if (!await requireWallet(ctx)) return;
-
-        // Step 1: Warning + confirmation inline button
-        exportConfirm.add(chatId);
-        await ctx.reply(
-            t(l, 'export_key_title') + '\n\n' + t(l, 'export_key_warning'),
-            {
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [[
-                        { text: t(l, 'export_key_confirm'), callback_data: 'confirm_export_key' },
-                    ]],
-                },
+            const rawMsg = (err?.message || '').toLowerCase();
+            if (rawMsg.includes('insufficient funds') || rawMsg.includes('insufficient_funds') ||
+                (rawMsg.includes('gas') && rawMsg.includes('funds'))) {
+                await showError(
+                    `❌ *가스비(ETH) 부족!*\n\n` +
+                    `송금 트랜잭션을 처리할 ETH 가스비가 없습니다.\n` +
+                    `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.`
+                ).catch(() => { });
+            } else {
+                await showError(
+                    `❌ *일시적인 통신 오류가 발생했습니다.*\n\n` +
+                    `블록체인 네트워크 혼잡으로 인해 처리가 지연되고 있습니다.\n` +
+                    `귀하의 자금은 안전하며, 잠시 후 다시 시도해 주시기 바랍니다.`
+                ).catch(() => { });
             }
-        );
-    };
-    bot.command('export_key', handleExportKey);
-    bot.hears(/^⚙️/, handleExportKey);
+        };
 
-    // ── Export Key Callback ───────────────────────────────────────────────────
-    bot.action('confirm_export_key', async (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const l = lang(chatId);
-        await ctx.answerCbQuery();
-        await ctx.editMessageReplyMarkup({});
+        // ── /export_key ───────────────────────────────────────────────────────────
+        const handleExportKey = async (ctx) => {
+            const chatId = String(ctx.chat.id);
+            const l = lang(chatId);
+            if (!await requireWallet(ctx)) return;
 
-        if (!exportConfirm.has(chatId)) {
-            return ctx.reply(t(l, 'error_generic'), { parse_mode: 'Markdown' });
-        }
-        exportConfirm.delete(chatId);
-
-        let pk;
-        try {
-            pk = getUserPrivateKey(chatId);
-        } catch (err) {
-            return ctx.reply(`❌ ${err.message}`, { parse_mode: 'Markdown' });
-        }
-
-        // Send the key — then auto-delete after 60 seconds
-        const keyMsg = await ctx.reply(
-            t(l, 'export_key_value', { pk }),
-            { parse_mode: 'Markdown' }
-        );
-
-        setTimeout(async () => {
-            try {
-                await bot.telegram.deleteMessage(chatId, keyMsg.message_id);
-            } catch { /* already deleted */ }
-        }, 60_000);
-    });
-
-    // ── /wallet ───────────────────────────────────────────────────────────────
-    bot.command('wallet', async (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const l = lang(chatId);
-        const wallet = getUserWallet(chatId);
-        if (!wallet) return ctx.reply(t(l, 'error_no_user'), { parse_mode: 'Markdown' });
-        ctx.reply(t(l, 'wallet_header', { wallet }), { parse_mode: 'Markdown' });
-    });
-
-    // ── /help ─────────────────────────────────────────────────────────────────
-    bot.command('help', (ctx) => {
-        ctx.reply(t(lang(ctx.chat.id), 'help'), { parse_mode: 'Markdown' });
-    });
-
-    // ── /stopdashboard ────────────────────────────────────────────────────────
-    bot.command('stopdashboard', (ctx) => {
-        killdDashboard(String(ctx.chat.id));
-        ctx.reply(t(lang(ctx.chat.id), 'stop_dashboard'));
-    });
-
-    // ── /cancelgrid ───────────────────────────────────────────────────────────
-    bot.command('cancelgrid', (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const l = lang(chatId);
-        const gs = gridSessions.get(chatId);
-        killdDashboard(chatId);
-        if (!gs) return ctx.reply(t(l, 'no_grid'));
-        gridSessions.delete(chatId);
-        ctx.reply(t(l, 'grid_cancelled', { asset: gs.stats?.asset || 'N/A' }), { parse_mode: 'Markdown' });
-    });
-
-    // ── /history ──────────────────────────────────────────────────────────────
-    bot.command('history', async (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const trades = getTradesByChatId(chatId);
-        if (!trades.length) return ctx.reply('No trades found.');
-        const lines = trades.slice(0, 10).map((t) => `[#${t.id}] ${t.action.toUpperCase()} $${t.amount} ${t.asset}`);
-        ctx.reply(`*Recent Trades:*\n\`\`\`\n${lines.join('\n')}\n\`\`\``, { parse_mode: 'Markdown' });
-    });
-
-    // ── /connect ──────────────────────────────────────────────────────────────
-    bot.command('connect', (ctx) => {
-        const code = generateSyncCode(String(ctx.chat.id));
-        ctx.reply(`*AIGENT Account Link*\n\nSync Code: \`${code}\`\n\n_(Valid for 1 hour)_`, { parse_mode: 'Markdown' });
-    });
-
-    // ── Main NL Text Handler ──────────────────────────────────────────────────
-    bot.on('text', async (ctx) => {
-        const userText = ctx.message.text.trim();
-        if (userText.startsWith('/')) return;
-
-        // ── Absolute button-text firewall ───────────────────────────────────────
-        // Covers all 5 languages. ANY message containing these substrings is
-        // routed immediately and NEVER reaches Claude NLP.
-        const DASHBOARD_KEYWORDS = ['대시보드', 'Dashboard', 'Panel en Vivo', '실시간', 'ダッシュボード', '终端', '📊'];
-        const WITHDRAW_KEYWORDS = ['출금', 'Withdraw', 'Retirar', '提款', '出金', '💸'];
-        const SETTINGS_KEYWORDS = ['세팅', 'Settings', 'Config', '设置', '設定', '⚙'];
-
-        if (DASHBOARD_KEYWORDS.some(k => userText.includes(k))) return handleDashboard(ctx);
-        if (WITHDRAW_KEYWORDS.some(k => userText.includes(k))) return handleWithdraw(ctx);
-        if (SETTINGS_KEYWORDS.some(k => userText.includes(k))) return handleExportKey(ctx);
-        const DEPOSIT_KEYWORDS = ['거래소로 송금', 'Fund Exchange', 'Enviar al Exchange', '转入交易所', '取引所へ入金', '📥'];
-        if (DEPOSIT_KEYWORDS.some(k => userText.includes(k))) return handleDeposit(ctx);
-
-        // ── Deposit: custom amount text input ──────────────────────────────────
-        // If the user has an active deposit prompt and types a number, use it as the amount.
-        const chatIdEarly = String(ctx.chat.id);
-        if (depositPending.has(chatIdEarly)) {
-            const numVal = parseFloat(userText.replace(/,/g, '').trim());
-            if (!isNaN(numVal) && numVal > 0) {
-                const pending = depositPending.get(chatIdEarly);
-                depositPending.delete(chatIdEarly);
-                // Remove inline keyboard from original prompt
-                await ctx.telegram.editMessageReplyMarkup(chatIdEarly, pending.promptMsgId, null, { inline_keyboard: [] }).catch(() => { });
-                return runDepositFlow(ctx, chatIdEarly, numVal);
-            }
-        }
-
-        const chatId = chatIdEarly;
-        const l = lang(chatId);
-
-        if (!getUserWallet(chatId)) {
-            return ctx.reply(t(l, 'error_no_user'), {
-                parse_mode: 'Markdown',
-                reply_markup: LANG_KEYBOARD,
-            });
-        }
-
-        const thinkingMsg = await ctx.reply('_Analyzing intent..._', { parse_mode: 'Markdown' });
-
-        try {
-            const intent = await parseIntent(userText);
-
-            if (intent.error) {
-                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-                return ctx.reply(t(l, 'parse_error', { error: intent.error }), { parse_mode: 'Markdown' });
-            }
-
-            const strategy = intent.strategy || 'simple';
-
-            // ── CHAT (general conversation / questions) ────────────────────────
-            if (strategy === 'chat') {
-                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-                return ctx.reply(intent.reply || '안녕하세요! 매매 명령을 내려주세요.', { parse_mode: 'Markdown' });
-            }
-
-            // ── GRID ──────────────────────────────────────────────────────────
-            if (strategy === 'grid') {
-                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-                await ctx.reply(
-                    `*Intent:*\n\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
-                    `_Placing ${intent.grid_count || '?'} grid orders on Hyperliquid..._`,
-                    { parse_mode: 'Markdown' }
-                );
-
-                let userPk;
-                try { userPk = getUserPrivateKey(chatId); } catch (e) {
-                    return ctx.reply(`❌ ${e.message}`, { parse_mode: 'Markdown' });
-                }
-
-                const { runGridBot } = await import('./strategies/grid.js');
-                const result = await runGridBot(intent, chatId, userPk);
-
-                if (result.success) {
-                    gridSessions.set(chatId, { asset: intent.asset, stats: result.stats });
-                    await ctx.reply(result.summary, { parse_mode: 'Markdown' });
-                    await ctx.reply(`_Launching ${intent.asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
-                    await startDashboard(bot, chatId, {
-                        asset: result.stats.asset,
-                        gridCount: result.stats.gridCount,
-                        totalUsdc: result.stats.totalUsdc,
-                        lowerPrice: result.stats.lowerPrice,
-                        upperPrice: result.stats.upperPrice,
-                    });
-                } else {
-                    await ctx.reply(result.error, { parse_mode: 'Markdown' });
-                }
-                return;
-            }
-
-            // ── UNIVERSAL ORDER ───────────────────────────────────────────────
-            if (strategy === 'order') {
-                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-                await ctx.reply(
-                    `*Intent:*\n\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
-                    `_Executing ${intent.type || 'market'} order on Hyperliquid..._`,
-                    { parse_mode: 'Markdown' }
-                );
-
-                let userPk;
-                try { userPk = getUserPrivateKey(chatId); } catch (e) {
-                    return ctx.reply(`❌ ${e.message}`, { parse_mode: 'Markdown' });
-                }
-
-                const { executeUniversalOrder } = await import('./strategies/order.js');
-                const result = await executeUniversalOrder(intent, userPk);
-
-                if (result.success) {
-                    await ctx.reply(result.summary, { parse_mode: 'Markdown' });
-                    await ctx.reply(`_Launching ${result.details.asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
-                    await startDashboard(bot, chatId, {
-                        asset: result.details.asset,
-                        gridCount: 0,
-                        totalUsdc: result.details.sizeUsd,
-                        lowerPrice: 0,
-                        upperPrice: 0,
-                    });
-                    // 🟥 Auto-start live position monitor
-                    const wallet = getUserWallet(chatId);
-                    if (wallet) {
-                        startPositionMonitor(bot, chatId, wallet, result.details.asset, lang(chatId))
-                            .catch(e => console.error('[MONITOR] start error:', e.message));
-                    }
-                } else {
-                    await ctx.reply(result.error, { parse_mode: 'Markdown' });
-                }
-                return;
-            }
-
-            // ── SIMPLE TRADE ──────────────────────────────────────────────────
-            const { action, asset, amount, condition } = intent;
-            if (!action || !asset || !amount || !condition) {
-                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-                return ctx.reply(t(l, 'incomplete_intent'), { parse_mode: 'Markdown' });
-            }
-
-            const tradeId = insertTrade({ chatId, action, asset, amount, condition });
-            await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+            // Step 1: Warning + confirmation inline button
+            exportConfirm.add(chatId);
             await ctx.reply(
-                t(l, 'trade_configured', {
-                    id: tradeId,
-                    summary: `${action.toUpperCase()} $${amount} ${asset} — ${condition}`,
-                }),
+                t(l, 'export_key_title') + '\n\n' + t(l, 'export_key_warning'),
+                {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                        inline_keyboard: [[
+                            { text: t(l, 'export_key_confirm'), callback_data: 'confirm_export_key' },
+                        ]],
+                    },
+                }
+            );
+        };
+        bot.command('export_key', handleExportKey);
+        bot.hears(/^⚙️/, handleExportKey);
+
+        // ── Export Key Callback ───────────────────────────────────────────────────
+        bot.action('confirm_export_key', async (ctx) => {
+            const chatId = String(ctx.chat.id);
+            const l = lang(chatId);
+            await ctx.answerCbQuery();
+            await ctx.editMessageReplyMarkup({});
+
+            if (!exportConfirm.has(chatId)) {
+                return ctx.reply(t(l, 'error_generic'), { parse_mode: 'Markdown' });
+            }
+            exportConfirm.delete(chatId);
+
+            let pk;
+            try {
+                pk = getUserPrivateKey(chatId);
+            } catch (err) {
+                return ctx.reply(`❌ ${err.message}`, { parse_mode: 'Markdown' });
+            }
+
+            // Send the key — then auto-delete after 60 seconds
+            const keyMsg = await ctx.reply(
+                t(l, 'export_key_value', { pk }),
                 { parse_mode: 'Markdown' }
             );
 
-        } catch (err) {
-            console.error('[BOT] Error:', err);
-            await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-            ctx.reply(t(lang(chatId), 'error_generic'), { parse_mode: 'Markdown' });
-        }
-    });
+            setTimeout(async () => {
+                try {
+                    await bot.telegram.deleteMessage(chatId, keyMsg.message_id);
+                } catch { /* already deleted */ }
+            }, 60_000);
+        });
 
-    // ── Session logger ────────────────────────────────────────────────────────
-    setInterval(() => {
-        const n = getActiveSessions();
-        if (n > 0) console.log(`[BOT] Active sessions: ${n}`);
-    }, 300_000);
+        // ── /wallet ───────────────────────────────────────────────────────────────
+        bot.command('wallet', async (ctx) => {
+            const chatId = String(ctx.chat.id);
+            const l = lang(chatId);
+            const wallet = getUserWallet(chatId);
+            if (!wallet) return ctx.reply(t(l, 'error_no_user'), { parse_mode: 'Markdown' });
+            ctx.reply(t(l, 'wallet_header', { wallet }), { parse_mode: 'Markdown' });
+        });
 
-    // ── Launch & register commands ─────────────────────────────────────────────
-    const launch = async (retries = 10) => {
-        try {
-            await bot.launch({ dropPendingUpdates: true });
-            console.log('AIGENT multi-lang bot started.');
-            await registerCommands(bot);
-            // Start 24/7 deposit monitor (silently skips if ARB_RPC_URL not set)
-            startDepositMonitor(bot).catch((e) => console.error('[DEPOSIT] Start error:', e.message));
-        } catch (err) {
-            if (err.response?.error_code === 409 && retries > 0) {
-                console.log(`Telegram 409 conflict — retrying in 10s... (${retries} left)`);
-                await new Promise((r) => setTimeout(r, 10_000));
-                return launch(retries - 1);
+        // ── /help ─────────────────────────────────────────────────────────────────
+        bot.command('help', (ctx) => {
+            ctx.reply(t(lang(ctx.chat.id), 'help'), { parse_mode: 'Markdown' });
+        });
+
+        // ── /stopdashboard ────────────────────────────────────────────────────────
+        bot.command('stopdashboard', (ctx) => {
+            killdDashboard(String(ctx.chat.id));
+            ctx.reply(t(lang(ctx.chat.id), 'stop_dashboard'));
+        });
+
+        // ── /cancelgrid ───────────────────────────────────────────────────────────
+        bot.command('cancelgrid', (ctx) => {
+            const chatId = String(ctx.chat.id);
+            const l = lang(chatId);
+            const gs = gridSessions.get(chatId);
+            killdDashboard(chatId);
+            if (!gs) return ctx.reply(t(l, 'no_grid'));
+            gridSessions.delete(chatId);
+            ctx.reply(t(l, 'grid_cancelled', { asset: gs.stats?.asset || 'N/A' }), { parse_mode: 'Markdown' });
+        });
+
+        // ── /history ──────────────────────────────────────────────────────────────
+        bot.command('history', async (ctx) => {
+            const chatId = String(ctx.chat.id);
+            const trades = getTradesByChatId(chatId);
+            if (!trades.length) return ctx.reply('No trades found.');
+            const lines = trades.slice(0, 10).map((t) => `[#${t.id}] ${t.action.toUpperCase()} $${t.amount} ${t.asset}`);
+            ctx.reply(`*Recent Trades:*\n\`\`\`\n${lines.join('\n')}\n\`\`\``, { parse_mode: 'Markdown' });
+        });
+
+        // ── /connect ──────────────────────────────────────────────────────────────
+        bot.command('connect', (ctx) => {
+            const code = generateSyncCode(String(ctx.chat.id));
+            ctx.reply(`*AIGENT Account Link*\n\nSync Code: \`${code}\`\n\n_(Valid for 1 hour)_`, { parse_mode: 'Markdown' });
+        });
+
+        // ── Main NL Text Handler ──────────────────────────────────────────────────
+        bot.on('text', async (ctx) => {
+            const userText = ctx.message.text.trim();
+            if (userText.startsWith('/')) return;
+
+            // ── Absolute button-text firewall ───────────────────────────────────────
+            // Covers all 5 languages. ANY message containing these substrings is
+            // routed immediately and NEVER reaches Claude NLP.
+            const DASHBOARD_KEYWORDS = ['대시보드', 'Dashboard', 'Panel en Vivo', '실시간', 'ダッシュボード', '终端', '📊'];
+            const WITHDRAW_KEYWORDS = ['출금', 'Withdraw', 'Retirar', '提款', '出金', '💸'];
+            const SETTINGS_KEYWORDS = ['세팅', 'Settings', 'Config', '设置', '設定', '⚙'];
+
+            if (DASHBOARD_KEYWORDS.some(k => userText.includes(k))) return handleDashboard(ctx);
+            if (WITHDRAW_KEYWORDS.some(k => userText.includes(k))) return handleWithdraw(ctx);
+            if (SETTINGS_KEYWORDS.some(k => userText.includes(k))) return handleExportKey(ctx);
+            const DEPOSIT_KEYWORDS = ['거래소로 송금', 'Fund Exchange', 'Enviar al Exchange', '转入交易所', '取引所へ入金', '📥'];
+            if (DEPOSIT_KEYWORDS.some(k => userText.includes(k))) return handleDeposit(ctx);
+
+            // ── Deposit: custom amount text input ──────────────────────────────────
+            // If the user has an active deposit prompt and types a number, use it as the amount.
+            const chatIdEarly = String(ctx.chat.id);
+            if (depositPending.has(chatIdEarly)) {
+                const numVal = parseFloat(userText.replace(/,/g, '').trim());
+                if (!isNaN(numVal) && numVal > 0) {
+                    const pending = depositPending.get(chatIdEarly);
+                    depositPending.delete(chatIdEarly);
+                    // Remove inline keyboard from original prompt
+                    await ctx.telegram.editMessageReplyMarkup(chatIdEarly, pending.promptMsgId, null, { inline_keyboard: [] }).catch(() => { });
+                    return runDepositFlow(ctx, chatIdEarly, numVal);
+                }
             }
-            throw err;
-        }
-    };
 
-    await launch();
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+            const chatId = chatIdEarly;
+            const l = lang(chatId);
 
-    // Telegraf v4 bot.launch() resolves immediately once polling is registered.
-    // Without this, startBot() returns, index.js finishes, and Node.js exits.
-    // This never-resolving Promise keeps the event loop alive until SIGINT/SIGTERM.
-    await new Promise(() => { });
+            if (!getUserWallet(chatId)) {
+                return ctx.reply(t(l, 'error_no_user'), {
+                    parse_mode: 'Markdown',
+                    reply_markup: LANG_KEYBOARD,
+                });
+            }
+
+            const thinkingMsg = await ctx.reply('_Analyzing intent..._', { parse_mode: 'Markdown' });
+
+            try {
+                const intent = await parseIntent(userText);
+
+                if (intent.error) {
+                    await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                    return ctx.reply(t(l, 'parse_error', { error: intent.error }), { parse_mode: 'Markdown' });
+                }
+
+                const strategy = intent.strategy || 'simple';
+
+                // ── CHAT (general conversation / questions) ────────────────────────
+                if (strategy === 'chat') {
+                    await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                    return ctx.reply(intent.reply || '안녕하세요! 매매 명령을 내려주세요.', { parse_mode: 'Markdown' });
+                }
+
+                // ── GRID ──────────────────────────────────────────────────────────
+                if (strategy === 'grid') {
+                    await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                    await ctx.reply(
+                        `*Intent:*\n\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
+                        `_Placing ${intent.grid_count || '?'} grid orders on Hyperliquid..._`,
+                        { parse_mode: 'Markdown' }
+                    );
+
+                    let userPk;
+                    try { userPk = getUserPrivateKey(chatId); } catch (e) {
+                        return ctx.reply(`❌ ${e.message}`, { parse_mode: 'Markdown' });
+                    }
+
+                    const { runGridBot } = await import('./strategies/grid.js');
+                    const result = await runGridBot(intent, chatId, userPk);
+
+                    if (result.success) {
+                        gridSessions.set(chatId, { asset: intent.asset, stats: result.stats });
+                        await ctx.reply(result.summary, { parse_mode: 'Markdown' });
+                        await ctx.reply(`_Launching ${intent.asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
+                        await startDashboard(bot, chatId, {
+                            asset: result.stats.asset,
+                            gridCount: result.stats.gridCount,
+                            totalUsdc: result.stats.totalUsdc,
+                            lowerPrice: result.stats.lowerPrice,
+                            upperPrice: result.stats.upperPrice,
+                        });
+                    } else {
+                        await ctx.reply(result.error, { parse_mode: 'Markdown' });
+                    }
+                    return;
+                }
+
+                // ── UNIVERSAL ORDER ───────────────────────────────────────────────
+                if (strategy === 'order') {
+                    await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                    await ctx.reply(
+                        `*Intent:*\n\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
+                        `_Executing ${intent.type || 'market'} order on Hyperliquid..._`,
+                        { parse_mode: 'Markdown' }
+                    );
+
+                    let userPk;
+                    try { userPk = getUserPrivateKey(chatId); } catch (e) {
+                        return ctx.reply(`❌ ${e.message}`, { parse_mode: 'Markdown' });
+                    }
+
+                    const { executeUniversalOrder } = await import('./strategies/order.js');
+                    const result = await executeUniversalOrder(intent, userPk);
+
+                    if (result.success) {
+                        await ctx.reply(result.summary, { parse_mode: 'Markdown' });
+                        await ctx.reply(`_Launching ${result.details.asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
+                        await startDashboard(bot, chatId, {
+                            asset: result.details.asset,
+                            gridCount: 0,
+                            totalUsdc: result.details.sizeUsd,
+                            lowerPrice: 0,
+                            upperPrice: 0,
+                        });
+                        // 🟥 Auto-start live position monitor
+                        const wallet = getUserWallet(chatId);
+                        if (wallet) {
+                            startPositionMonitor(bot, chatId, wallet, result.details.asset, lang(chatId))
+                                .catch(e => console.error('[MONITOR] start error:', e.message));
+                        }
+                    } else {
+                        await ctx.reply(result.error, { parse_mode: 'Markdown' });
+                    }
+                    return;
+                }
+
+                // ── SIMPLE TRADE ──────────────────────────────────────────────────
+                const { action, asset, amount, condition } = intent;
+                if (!action || !asset || !amount || !condition) {
+                    await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                    return ctx.reply(t(l, 'incomplete_intent'), { parse_mode: 'Markdown' });
+                }
+
+                const tradeId = insertTrade({ chatId, action, asset, amount, condition });
+                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                await ctx.reply(
+                    t(l, 'trade_configured', {
+                        id: tradeId,
+                        summary: `${action.toUpperCase()} $${amount} ${asset} — ${condition}`,
+                    }),
+                    { parse_mode: 'Markdown' }
+                );
+
+            } catch (err) {
+                console.error('[BOT] Error:', err);
+                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+                ctx.reply(t(lang(chatId), 'error_generic'), { parse_mode: 'Markdown' });
+            }
+        });
+
+        // ── Session logger ────────────────────────────────────────────────────────
+        setInterval(() => {
+            const n = getActiveSessions();
+            if (n > 0) console.log(`[BOT] Active sessions: ${n}`);
+        }, 300_000);
+
+        // ── Launch & register commands ─────────────────────────────────────────────
+        const launch = async (retries = 10) => {
+            try {
+                await bot.launch({ dropPendingUpdates: true });
+                console.log('AIGENT multi-lang bot started.');
+                await registerCommands(bot);
+                // Start 24/7 deposit monitor (silently skips if ARB_RPC_URL not set)
+                startDepositMonitor(bot).catch((e) => console.error('[DEPOSIT] Start error:', e.message));
+            } catch (err) {
+                if (err.response?.error_code === 409 && retries > 0) {
+                    console.log(`Telegram 409 conflict — retrying in 10s... (${retries} left)`);
+                    await new Promise((r) => setTimeout(r, 10_000));
+                    return launch(retries - 1);
+                }
+                throw err;
+            }
+        };
+
+        await launch();
+        process.once('SIGINT', () => bot.stop('SIGINT'));
+        process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+        // Telegraf v4 bot.launch() resolves immediately once polling is registered.
+        // Without this, startBot() returns, index.js finishes, and Node.js exits.
+        // This never-resolving Promise keeps the event loop alive until SIGINT/SIGTERM.
+        await new Promise(() => { });
+    }
 }

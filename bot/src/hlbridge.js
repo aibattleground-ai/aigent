@@ -173,16 +173,31 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
 
     let approveTxHash = '(already approved)';
     if (currentAllowance.lt(rawDepositAmt)) {
-        const approveTx = await usdc.approve(HL_BRIDGE_ADDRESS, rawDepositAmt, {
-            gasLimit: 100_000,
-        });
-        onProgress('⏳ Approval tx broadcast — waiting for confirmation...');
-        const approveReceipt = await approveTx.wait(1);
-        if (approveReceipt.status !== 1) {
-            return { success: false, error: 'Approval transaction reverted.' };
+        try {
+            const approveTx = await usdc.approve(HL_BRIDGE_ADDRESS, rawDepositAmt, {
+                gasLimit: 100_000,
+            });
+            onProgress('⏳ Approval tx broadcast — waiting for confirmation...');
+            const approveReceipt = await approveTx.wait(1);
+            if (approveReceipt.status !== 1) {
+                return { success: false, error: 'Approval transaction reverted.' };
+            }
+            approveTxHash = approveTx.hash;
+            onProgress(`✅ Approved! Tx: ${approveTxHash.slice(0, 10)}...`);
+        } catch (err) {
+            console.error('[HLBRIDGE] Approve failed:', err.message);
+            const msg = (err?.message || '').toLowerCase();
+            if (msg.includes('insufficient funds') || msg.includes('gas') || msg.includes('fee')) {
+                return {
+                    success: false,
+                    error:
+                        `⛽ 가스비(ETH) 부족\n\n` +
+                        `송금(Approve) 트랜잭션을 처리할 ETH 가스비가 없습니다.\n` +
+                        `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.`,
+                };
+            }
+            return { success: false, error: `Approval failed: ${err.message}` };
         }
-        approveTxHash = approveTx.hash;
-        onProgress(`✅ Approved! Tx: ${approveTxHash.slice(0, 10)}...`);
     } else {
         onProgress('✅ Bridge already approved for this amount. Skipping approval.');
     }
@@ -195,21 +210,36 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
     // Bridge takes uint64 = USDC in raw units (6 decimals)
     const rawUint64 = rawDepositAmt.toNumber(); // safe: max USDC << 2^64
 
-    const depositTx = await bridge.deposit(rawUint64, {
-        gasLimit: 200_000,
-    });
+    try {
+        const depositTx = await bridge.deposit(rawUint64, {
+            gasLimit: 200_000,
+        });
 
-    onProgress('⏳ Deposit tx broadcast — waiting for confirmation...');
-    const depositReceipt = await depositTx.wait(1);
+        onProgress('⏳ Deposit tx broadcast — waiting for confirmation...');
+        const depositReceipt = await depositTx.wait(1);
 
-    if (depositReceipt.status !== 1) {
-        return { success: false, error: 'Deposit transaction reverted.', approveTxHash };
+        if (depositReceipt.status !== 1) {
+            return { success: false, error: 'Deposit transaction reverted.', approveTxHash };
+        }
+
+        return {
+            success: true,
+            depositedUsdc: depositAmt.toFixed(2),
+            approveTxHash,
+            depositTxHash: depositTx.hash,
+        };
+    } catch (err) {
+        console.error('[HLBRIDGE] Deposit failed:', err.message);
+        const msg = (err?.message || '').toLowerCase();
+        if (msg.includes('insufficient funds') || msg.includes('gas') || msg.includes('fee')) {
+            return {
+                success: false,
+                error:
+                    `⛽ 가스비(ETH) 부족\n\n` +
+                    `송금(Deposit) 트랜잭션을 처리할 ETH 가스비가 없습니다.\n` +
+                    `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.`,
+            };
+        }
+        return { success: false, error: `Deposit failed: ${err.message}`, approveTxHash };
     }
-
-    return {
-        success: true,
-        depositedUsdc: depositAmt.toFixed(2),
-        approveTxHash,
-        depositTxHash: depositTx.hash,
-    };
 }
