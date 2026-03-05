@@ -12,6 +12,7 @@ import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivate
 import { t, LANGUAGES } from './i18n.js';
 import { startDepositMonitor } from './deposit.js';
 import { depositToHyperliquid } from './hlbridge.js';
+import { startPositionMonitor, stopPositionMonitor, hasActiveMonitor } from './monitor.js';
 
 // ── In-memory state ────────────────────────────────────────────────────────────
 const gridSessions = new Map();    // chatId → { asset, stats }
@@ -86,6 +87,7 @@ async function registerCommands(bot) {
         { command: 'export_key', description: '🔑 프라이빗 키 백업 (MetaMask)' },
         { command: 'wallet', description: '🏦 내 지갑 주소 확인' },
         { command: 'history', description: '📋 최근 거래 내역' },
+        { command: 'close', description: '🏁 포지션 모니터 중지' },
         { command: 'cancelgrid', description: '🛑 그리드봇 중지' },
         { command: 'language', description: '🌐 언어 변경' },
         { command: 'help', description: '📖 봇 사용 가이드' },
@@ -204,6 +206,28 @@ export async function startBot() {
     };
     bot.command('withdraw', handleWithdraw);
     bot.hears(/^💸/, handleWithdraw);
+
+    // ── /close — stop position monitor ───────────────────────────────────────────────────
+    bot.command('close', (ctx) => {
+        const chatId = String(ctx.chat.id);
+        const l = lang(chatId);
+        if (hasActiveMonitor(chatId)) {
+            stopPositionMonitor(chatId);
+            ctx.reply(
+                l === 'ko'
+                    ? '🏁 *포지션 모니터 중지*\n\n_라이브 더 업데이트 중지. 대시보드를 다시 열려면 하단 버튼을 눌러주세요._'
+                    : '🏁 *Position Monitor Stopped*\n\n_Live updates paused. Press the dashboard button to resume._',
+                { parse_mode: 'Markdown' }
+            );
+        } else {
+            ctx.reply(
+                l === 'ko'
+                    ? 'ℹ️ 활성화된 포지션 모니터가 없습니다.'
+                    : 'ℹ️ No active position monitor running.',
+                { parse_mode: 'Markdown' }
+            );
+        }
+    });
 
     // ── 📥 Deposit → Hyperliquid ──────────────────────────────────────────────
     const handleDeposit = async (ctx) => {
@@ -381,8 +405,8 @@ export async function startBot() {
         if (DASHBOARD_KEYWORDS.some(k => userText.includes(k))) return handleDashboard(ctx);
         if (WITHDRAW_KEYWORDS.some(k => userText.includes(k))) return handleWithdraw(ctx);
         if (SETTINGS_KEYWORDS.some(k => userText.includes(k))) return handleExportKey(ctx);
-        const DEPOSIT_KEYWORDS   = ['거래소로 송금', 'Fund Exchange', 'Enviar al Exchange', '转入交易所', '取引所へ入金', '📥'];
-        if (DEPOSIT_KEYWORDS.some(k   => userText.includes(k))) return handleDeposit(ctx);
+        const DEPOSIT_KEYWORDS = ['거래소로 송금', 'Fund Exchange', 'Enviar al Exchange', '转入交易所', '取引所へ入金', '📥'];
+        if (DEPOSIT_KEYWORDS.some(k => userText.includes(k))) return handleDeposit(ctx);
 
 
         const chatId = String(ctx.chat.id);
@@ -468,6 +492,12 @@ export async function startBot() {
                         lowerPrice: 0,
                         upperPrice: 0,
                     });
+                    // 🟥 Auto-start live position monitor
+                    const wallet = getUserWallet(chatId);
+                    if (wallet) {
+                        startPositionMonitor(bot, chatId, wallet, result.details.asset, lang(chatId))
+                            .catch(e => console.error('[MONITOR] start error:', e.message));
+                    }
                 } else {
                     await ctx.reply(result.error, { parse_mode: 'Markdown' });
                 }
