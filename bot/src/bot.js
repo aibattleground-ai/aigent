@@ -1,7 +1,7 @@
 /**
- * AIGENT - Multi-Language, Multi-User Telegram Bot
+ * AIGENT — Multi-Language, Multi-User Telegram Bot
+ * Features: Command Menu, Reply Keyboard, /withdraw, /export_key
  * Supports: EN / KO / ES / ZH
- * Per-user wallet generation + Hyperliquid signing
  */
 import { Telegraf } from 'telegraf';
 import { parseIntent } from './llm.js';
@@ -11,10 +11,13 @@ import { initDB, insertTrade, getTradesByChatId, generateSyncCode } from './db.j
 import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivateKey } from './users.js';
 import { t, LANGUAGES } from './i18n.js';
 
-// ── Active grid sessions (in-memory) ──────────────────────────────────────────
-const gridSessions = new Map(); // chatId → { asset, stats }
+// ── In-memory state ────────────────────────────────────────────────────────────
+const gridSessions = new Map();    // chatId → { asset, stats }
+const exportConfirm = new Set();   // chatIds awaiting key export confirmation
 
-// ── Language selection keyboard ───────────────────────────────────────────────
+// ── UI Keyboards ───────────────────────────────────────────────────────────────
+
+/** Inline keyboard for language selection */
 const LANG_KEYBOARD = {
     inline_keyboard: [[
         { text: '🇬🇧 English', callback_data: 'lang:en' },
@@ -25,16 +28,59 @@ const LANG_KEYBOARD = {
     ]],
 };
 
-// ── Helper: get user's lang from DB ──────────────────────────────────────────
-function lang(chatId) {
-    return getUserLang(String(chatId));
+/**
+ * Builds the persistent bottom Reply Keyboard in the user's language.
+ * resize_keyboard=true → fits the screen size automatically.
+ * one_time_keyboard=false → stays visible, user can hide/show via arrow.
+ */
+function replyKeyboard(l) {
+    return {
+        keyboard: [[
+            { text: t(l, 'btn_dashboard') },
+            { text: t(l, 'btn_withdraw') },
+            { text: t(l, 'btn_settings') },
+        ]],
+        resize_keyboard: true,
+        one_time_keyboard: false,
+        is_persistent: true,
+    };
 }
 
-// ── Helper: route strategies to HL using per-user private key ─────────────────
-async function getPerUserPrivateKey(chatId) {
-    return getUserPrivateKey(String(chatId));
+// ── Helpers ────────────────────────────────────────────────────────────────────
+const lang = (chatId) => getUserLang(String(chatId));
+
+async function requireWallet(ctx) {
+    const chatId = String(ctx.chat.id);
+    const l = lang(chatId);
+    if (!getUserWallet(chatId)) {
+        await ctx.reply(t(l, 'error_no_user'), {
+            parse_mode: 'Markdown',
+            reply_markup: LANG_KEYBOARD,
+        });
+        return false;
+    }
+    return true;
 }
 
+// ── Bot Registration ───────────────────────────────────────────────────────────
+
+/** Registers the official Telegram command list (Menu button in chat input bar) */
+async function registerCommands(bot) {
+    await bot.telegram.setMyCommands([
+        { command: 'start', description: '🚀 시작 및 다국어 설정 / Get started' },
+        { command: 'dashboard', description: '📊 실시간 자산/포지션 터미널' },
+        { command: 'withdraw', description: '💸 지갑 자금 출금 안내' },
+        { command: 'export_key', description: '🔑 프라이빗 키 백업 (MetaMask)' },
+        { command: 'wallet', description: '🏦 내 지갑 주소 확인' },
+        { command: 'history', description: '📋 최근 거래 내역' },
+        { command: 'cancelgrid', description: '🛑 그리드봇 중지' },
+        { command: 'language', description: '🌐 언어 변경' },
+        { command: 'help', description: '📖 봇 사용 가이드' },
+    ]);
+    console.log('[BOT] Telegram command menu registered.');
+}
+
+// ── Main Bot Start ─────────────────────────────────────────────────────────────
 export function startBot() {
     initDB();
     const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
@@ -42,69 +88,151 @@ export function startBot() {
     // ── /start ────────────────────────────────────────────────────────────────
     bot.command('start', async (ctx) => {
         const chatId = String(ctx.chat.id);
-        const existingLang = lang(chatId);
-        const existingWallet = getUserWallet(chatId);
+        const l = lang(chatId);
+        const wallet = getUserWallet(chatId);
 
-        // If already onboarded, skip language selection and show dashboard hint
-        if (existingWallet) {
+        if (wallet) {
+            // Already onboarded — show wallet + bottom keyboard
             return ctx.reply(
-                t(existingLang, 'wallet_header', { wallet: existingWallet }) + '\n\n' +
-                `📊 /dashboard   📖 /help   🌐 /language`,
-                { parse_mode: 'Markdown' }
+                t(l, 'wallet_header', { wallet }) + '\n\n📊 /dashboard   📖 /help   🌐 /language',
+                { parse_mode: 'Markdown', reply_markup: replyKeyboard(l) }
             );
         }
 
-        // First time — show language selector
-        await ctx.reply(
-            t('en', 'select_language'),
-            { parse_mode: 'Markdown', reply_markup: LANG_KEYBOARD }
-        );
+        // First launch — language picker
+        await ctx.reply(t('en', 'select_language'), {
+            parse_mode: 'Markdown',
+            reply_markup: LANG_KEYBOARD,
+        });
     });
 
-    // ── /language — re-select language ─────────────────────────────────────────
-    bot.command('language', async (ctx) => {
-        await ctx.reply(
-            t(lang(ctx.chat.id), 'select_language'),
-            { parse_mode: 'Markdown', reply_markup: LANG_KEYBOARD }
-        );
-    });
-
-    // ── Language callback handler ─────────────────────────────────────────────
+    // ── Language callback ─────────────────────────────────────────────────────
     bot.action(/^lang:(.+)$/, async (ctx) => {
         const chatId = String(ctx.chat.id);
-        const selectedLang = ctx.match[1]; // "en" | "ko" | "es" | "zh"
+        const selectedLang = ctx.match[1];
+        if (!LANGUAGES[selectedLang]) return ctx.answerCbQuery('Invalid.');
 
-        if (!LANGUAGES[selectedLang]) return ctx.answerCbQuery('Invalid language.');
-
-        // Acknowledge button press
         await ctx.answerCbQuery(`${LANGUAGES[selectedLang].flag} ${LANGUAGES[selectedLang].label}`);
-        await ctx.editMessageReplyMarkup({}); // Remove keyboard
+        await ctx.editMessageReplyMarkup({});
 
-        // Show "generating wallet..." message
-        const genMsg = await ctx.reply(
-            t(selectedLang, 'generating_wallet'),
-            { parse_mode: 'Markdown' }
-        );
+        const genMsg = await ctx.reply(t(selectedLang, 'generating_wallet'), { parse_mode: 'Markdown' });
 
         try {
-            // Onboard user (creates DB record + generates wallet if needed)
             const { walletAddress } = await onboardUser(chatId, selectedLang);
             updateLanguage(chatId, selectedLang);
-
-            // Delete spinner message
             await ctx.telegram.deleteMessage(chatId, genMsg.message_id).catch(() => { });
 
-            // Send full welcome message
+            // Welcome + show persistent bottom keyboard
             await ctx.reply(
                 t(selectedLang, 'welcome', { wallet: walletAddress }),
-                { parse_mode: 'Markdown' }
+                { parse_mode: 'Markdown', reply_markup: replyKeyboard(selectedLang) }
             );
-
         } catch (err) {
             console.error('[BOT] Onboarding error:', err);
             await ctx.telegram.deleteMessage(chatId, genMsg.message_id).catch(() => { });
             await ctx.reply(t(selectedLang, 'error_generic'), { parse_mode: 'Markdown' });
         }
+    });
+
+    // ── /language ─────────────────────────────────────────────────────────────
+    bot.command('language', async (ctx) => {
+        await ctx.reply(t(lang(ctx.chat.id), 'select_language'), {
+            parse_mode: 'Markdown',
+            reply_markup: LANG_KEYBOARD,
+        });
+    });
+
+    // ── /dashboard ────────────────────────────────────────────────────────────
+    const handleDashboard = async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        if (!await requireWallet(ctx)) return;
+
+        const args = (ctx.message?.text || '').split(/\s+/).slice(1);
+        const requestedAsset = args[0]?.toUpperCase() || null;
+        const gs = gridSessions.get(chatId);
+        const asset = requestedAsset || gs?.stats?.asset || 'ETH';
+
+        await ctx.reply(`_Initializing ${asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
+
+        await startDashboard(bot, chatId, {
+            asset,
+            gridCount: gs?.stats?.gridCount || 0,
+            totalUsdc: gs?.stats?.totalUsdc || 0,
+            lowerPrice: gs?.stats?.lowerPrice || 0,
+            upperPrice: gs?.stats?.upperPrice || 0,
+        });
+    };
+    bot.command('dashboard', handleDashboard);
+    bot.hears(/^📊/, handleDashboard);                     // Korean: 📊 대시보드 / all langs
+
+    // ── /withdraw ─────────────────────────────────────────────────────────────
+    const handleWithdraw = async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        const l = lang(chatId);
+        if (!await requireWallet(ctx)) return;
+        const wallet = getUserWallet(chatId);
+
+        await ctx.reply(
+            t(l, 'withdraw_title') + '\n\n' + t(l, 'withdraw_body', { wallet }),
+            { parse_mode: 'Markdown', disable_web_page_preview: true }
+        );
+    };
+    bot.command('withdraw', handleWithdraw);
+    bot.hears(/^💸/, handleWithdraw);
+
+    // ── /export_key ───────────────────────────────────────────────────────────
+    const handleExportKey = async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        const l = lang(chatId);
+        if (!await requireWallet(ctx)) return;
+
+        // Step 1: Warning + confirmation inline button
+        exportConfirm.add(chatId);
+        await ctx.reply(
+            t(l, 'export_key_title') + '\n\n' + t(l, 'export_key_warning'),
+            {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [[
+                        { text: t(l, 'export_key_confirm'), callback_data: 'confirm_export_key' },
+                    ]],
+                },
+            }
+        );
+    };
+    bot.command('export_key', handleExportKey);
+    bot.hears(/^⚙️/, handleExportKey);
+
+    // ── Export Key Callback ───────────────────────────────────────────────────
+    bot.action('confirm_export_key', async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        const l = lang(chatId);
+        await ctx.answerCbQuery();
+        await ctx.editMessageReplyMarkup({});
+
+        if (!exportConfirm.has(chatId)) {
+            return ctx.reply(t(l, 'error_generic'), { parse_mode: 'Markdown' });
+        }
+        exportConfirm.delete(chatId);
+
+        let pk;
+        try {
+            pk = getUserPrivateKey(chatId);
+        } catch (err) {
+            return ctx.reply(`❌ ${err.message}`, { parse_mode: 'Markdown' });
+        }
+
+        // Send the key — then auto-delete after 60 seconds
+        const keyMsg = await ctx.reply(
+            t(l, 'export_key_value', { pk }),
+            { parse_mode: 'Markdown' }
+        );
+
+        setTimeout(async () => {
+            try {
+                await bot.telegram.deleteMessage(chatId, keyMsg.message_id);
+            } catch { /* already deleted */ }
+        }, 60_000);
     });
 
     // ── /wallet ───────────────────────────────────────────────────────────────
@@ -119,30 +247,6 @@ export function startBot() {
     // ── /help ─────────────────────────────────────────────────────────────────
     bot.command('help', (ctx) => {
         ctx.reply(t(lang(ctx.chat.id), 'help'), { parse_mode: 'Markdown' });
-    });
-
-    // ── /dashboard ────────────────────────────────────────────────────────────
-    bot.command('dashboard', async (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const l = lang(chatId);
-
-        const args = ctx.message.text.split(/\s+/).slice(1);
-        const requestedAsset = args[0]?.toUpperCase() || null;
-        const gs = gridSessions.get(chatId);
-        const asset = requestedAsset || gs?.stats?.asset || 'ETH';
-
-        await ctx.reply(
-            `_Initializing ${asset}/USDC terminal..._`,
-            { parse_mode: 'Markdown' }
-        );
-
-        await startDashboard(bot, chatId, {
-            asset,
-            gridCount: gs?.stats?.gridCount || 0,
-            totalUsdc: gs?.stats?.totalUsdc || 0,
-            lowerPrice: gs?.stats?.lowerPrice || 0,
-            upperPrice: gs?.stats?.upperPrice || 0,
-        });
     });
 
     // ── /stopdashboard ────────────────────────────────────────────────────────
@@ -166,38 +270,33 @@ export function startBot() {
     bot.command('history', async (ctx) => {
         const chatId = String(ctx.chat.id);
         const trades = getTradesByChatId(chatId);
-        if (trades.length === 0) return ctx.reply('No trades found.');
-        const lines = trades.slice(0, 10).map(
-            (t) => `[#${t.id}] ${t.action.toUpperCase()} $${t.amount} ${t.asset}`
-        );
+        if (!trades.length) return ctx.reply('No trades found.');
+        const lines = trades.slice(0, 10).map((t) => `[#${t.id}] ${t.action.toUpperCase()} $${t.amount} ${t.asset}`);
         ctx.reply(`*Recent Trades:*\n\`\`\`\n${lines.join('\n')}\n\`\`\``, { parse_mode: 'Markdown' });
     });
 
-    // ── /connect (web dashboard sync) ─────────────────────────────────────────
+    // ── /connect ──────────────────────────────────────────────────────────────
     bot.command('connect', (ctx) => {
-        const chatId = String(ctx.chat.id);
-        const code = generateSyncCode(chatId);
-        ctx.reply(
-            `*AIGENT Account Link*\n\nSync Code: \`${code}\`\n\n_(Valid for 1 hour)_`,
-            { parse_mode: 'Markdown' }
-        );
+        const code = generateSyncCode(String(ctx.chat.id));
+        ctx.reply(`*AIGENT Account Link*\n\nSync Code: \`${code}\`\n\n_(Valid for 1 hour)_`, { parse_mode: 'Markdown' });
     });
 
-    // ── Main NL message handler ───────────────────────────────────────────────
+    // ── Main NL Text Handler ──────────────────────────────────────────────────
     bot.on('text', async (ctx) => {
         const userText = ctx.message.text;
         if (userText.startsWith('/')) return;
 
+        // Skip keyboard button texts (handled by bot.hears above)
+        if (/^[📊💸⚙️]/.test(userText)) return;
+
         const chatId = String(ctx.chat.id);
         const l = lang(chatId);
 
-        // Gate: require onboarding
-        const wallet = getUserWallet(chatId);
-        if (!wallet) {
-            return ctx.reply(
-                t(l, 'error_no_user'),
-                { parse_mode: 'Markdown', reply_markup: LANG_KEYBOARD }
-            );
+        if (!getUserWallet(chatId)) {
+            return ctx.reply(t(l, 'error_no_user'), {
+                parse_mode: 'Markdown',
+                reply_markup: LANG_KEYBOARD,
+            });
         }
 
         const thinkingMsg = await ctx.reply('_Analyzing intent..._', { parse_mode: 'Markdown' });
@@ -207,10 +306,7 @@ export function startBot() {
 
             if (intent.error) {
                 await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
-                return ctx.reply(
-                    t(l, 'parse_error', { error: intent.error }),
-                    { parse_mode: 'Markdown' }
-                );
+                return ctx.reply(t(l, 'parse_error', { error: intent.error }), { parse_mode: 'Markdown' });
             }
 
             const strategy = intent.strategy || 'simple';
@@ -224,9 +320,8 @@ export function startBot() {
                     { parse_mode: 'Markdown' }
                 );
 
-                // Inject per-user private key
                 let userPk;
-                try { userPk = getPerUserPrivateKey(chatId); } catch (e) {
+                try { userPk = getUserPrivateKey(chatId); } catch (e) {
                     return ctx.reply(`❌ ${e.message}`, { parse_mode: 'Markdown' });
                 }
 
@@ -238,8 +333,10 @@ export function startBot() {
                     await ctx.reply(result.summary, { parse_mode: 'Markdown' });
                     await ctx.reply(`_Launching ${intent.asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
                     await startDashboard(bot, chatId, {
-                        asset: result.stats.asset, gridCount: result.stats.gridCount,
-                        totalUsdc: result.stats.totalUsdc, lowerPrice: result.stats.lowerPrice,
+                        asset: result.stats.asset,
+                        gridCount: result.stats.gridCount,
+                        totalUsdc: result.stats.totalUsdc,
+                        lowerPrice: result.stats.lowerPrice,
                         upperPrice: result.stats.upperPrice,
                     });
                 } else {
@@ -258,7 +355,7 @@ export function startBot() {
                 );
 
                 let userPk;
-                try { userPk = getPerUserPrivateKey(chatId); } catch (e) {
+                try { userPk = getUserPrivateKey(chatId); } catch (e) {
                     return ctx.reply(`❌ ${e.message}`, { parse_mode: 'Markdown' });
                 }
 
@@ -269,8 +366,11 @@ export function startBot() {
                     await ctx.reply(result.summary, { parse_mode: 'Markdown' });
                     await ctx.reply(`_Launching ${result.details.asset}/USDC terminal..._`, { parse_mode: 'Markdown' });
                     await startDashboard(bot, chatId, {
-                        asset: result.details.asset, gridCount: 0,
-                        totalUsdc: result.details.sizeUsd, lowerPrice: 0, upperPrice: 0,
+                        asset: result.details.asset,
+                        gridCount: 0,
+                        totalUsdc: result.details.sizeUsd,
+                        lowerPrice: 0,
+                        upperPrice: 0,
                     });
                 } else {
                     await ctx.reply(result.error, { parse_mode: 'Markdown' });
@@ -305,14 +405,15 @@ export function startBot() {
     // ── Session logger ────────────────────────────────────────────────────────
     setInterval(() => {
         const n = getActiveSessions();
-        if (n > 0) console.log(`[BOT] Active dashboard sessions: ${n}`);
+        if (n > 0) console.log(`[BOT] Active sessions: ${n}`);
     }, 300_000);
 
-    // ── Launch ────────────────────────────────────────────────────────────────
+    // ── Launch & register commands ─────────────────────────────────────────────
     const launch = async (retries = 10) => {
         try {
             await bot.launch({ dropPendingUpdates: true });
             console.log('AIGENT multi-lang bot started.');
+            await registerCommands(bot);
         } catch (err) {
             if (err.response?.error_code === 409 && retries > 0) {
                 console.log(`Telegram 409 conflict — retrying in 10s... (${retries} left)`);
@@ -323,7 +424,7 @@ export function startBot() {
         }
     };
 
-    launch().catch((err) => { console.error('Bot failed to start:', err.message); process.exit(1); });
+    launch().catch((err) => { console.error('Bot failed:', err.message); process.exit(1); });
     process.once('SIGINT', () => bot.stop('SIGINT'));
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }

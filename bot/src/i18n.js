@@ -82,6 +82,36 @@ const MESSAGES = {
         stop_dashboard: `Dashboard stopped. Use /dashboard to restart.`,
         no_grid: `No active grid session found.`,
         grid_cancelled: `🛑 *Grid Stopped*\n\nAsset: *{{asset}}*\n\n_Open orders must be cancelled via Hyperliquid UI._`,
+
+        // Navigation keyboard labels
+        btn_dashboard: `📊 Dashboard`,
+        btn_withdraw: `💸 Withdraw`,
+        btn_settings: `⚙️ Settings & Key`,
+
+        // /withdraw
+        withdraw_title: `💸 *Withdraw Funds*`,
+        withdraw_body:
+            `Your AIGENT wallet holds funds on Arbitrum / Hyperliquid.\n\n` +
+            `*Wallet address:* \`{{wallet}}\`\n\n` +
+            `To withdraw:\n` +
+            `1. Open the [Hyperliquid App](https://app.hyperliquid.xyz)\n` +
+            `2. Connect this wallet address\n` +
+            `3. Use Withdraw → Arbitrum to move USDC to any address\n\n` +
+            `_Native in-bot withdrawals coming in v3.0._`,
+
+        // /export_key
+        export_key_title: `🔑 *Private Key Backup*`,
+        export_key_warning:
+            `⚠️ *Security Warning*\n\n` +
+            `Your private key grants *full access* to your wallet.\n` +
+            `*Never share it with anyone.*\n\n` +
+            `Tap the button below to reveal your key. It will auto-delete in 60 seconds.`,
+        export_key_confirm: `[ Reveal My Private Key ]`,
+        export_key_value:
+            `🔑 *Your Private Key*\n\n` +
+            `\`{{pk}}\`\n\n` +
+            `⚠️ Import this into MetaMask or any EVM wallet.\n` +
+            `_This message will self-delete in 60 seconds._`,
     },
 
     // ── Korean ─────────────────────────────────────────────────────────────────
@@ -134,6 +164,33 @@ const MESSAGES = {
         stop_dashboard: `대시보드를 중지했습니다. /dashboard 로 재시작할 수 있습니다.`,
         no_grid: `활성화된 그리드 세션이 없습니다.`,
         grid_cancelled: `🛑 *그리드봇 중지됨*\n\n자산: *{{asset}}*\n\n_미체결 주문은 Hyperliquid UI에서 직접 취소해 주세요._`,
+
+        btn_dashboard: `📊 대시보드`,
+        btn_withdraw: `💸 출금하기`,
+        btn_settings: `⚙️ 세팅 및 키 백업`,
+
+        withdraw_title: `💸 *출금하기*`,
+        withdraw_body:
+            `AIGENT 지갑의 자금은 Arbitrum / Hyperliquid에 있습니다.\n\n` +
+            `*지갑 주소:* \`{{wallet}}\`\n\n` +
+            `출금 방법:\n` +
+            `1. [Hyperliquid 앱](https://app.hyperliquid.xyz)을 여세요\n` +
+            `2. 위 지갑 주소를 연결하세요\n` +
+            `3. Withdraw → Arbitrum으로 원하는 주소에 USDC를 전송하세요\n\n` +
+            `_인봇 출금 기능은 v3.0에서 지원 예정입니다._`,
+
+        export_key_title: `🔑 *프라이빗 키 백업*`,
+        export_key_warning:
+            `⚠️ *보안 경고*\n\n` +
+            `프라이빗 키는 지갑의 *모든 자산에 대한 완전한 접근 권한*을 부여합니다.\n` +
+            `*절대 타인과 공유하지 마세요.*\n\n` +
+            `아래 버튼을 눌러 키를 확인하세요. 60초 후 자동 삭제됩니다.`,
+        export_key_confirm: `[ 프라이빗 키 확인 ]`,
+        export_key_value:
+            `🔑 *프라이빗 키*\n\n` +
+            `\`{{pk}}\`\n\n` +
+            `⚠️ MetaMask 또는 EVM 지갑에 가져오세요.\n` +
+            `_이 메시지는 60초 후 자동 삭제됩니다._`,
     },
 
     // ── Spanish ────────────────────────────────────────────────────────────────
@@ -186,6 +243,33 @@ const MESSAGES = {
         stop_dashboard: `Panel detenido. Usa /dashboard para reiniciar.`,
         no_grid: `No se encontró ninguna sesión de grid activa.`,
         grid_cancelled: `🛑 *Grid Detenido*\n\nActivo: *{{asset}}*\n\n_Las órdenes abiertas deben cancelarse en la interfaz de Hyperliquid._`,
+
+        btn_dashboard: `📊 Panel en Vivo`,
+        btn_withdraw: `💸 Retirar`,
+        btn_settings: `⚙️ Config & Clave`,
+
+        withdraw_title: `💸 *Retirar Fondos*`,
+        withdraw_body:
+            `Tu billetera AIGENT tiene fondos en Arbitrum / Hyperliquid.\n\n` +
+            `*Dirección:* \`{{wallet}}\`\n\n` +
+            `Para retirar:\n` +
+            `1. Abre la [App de Hyperliquid](https://app.hyperliquid.xyz)\n` +
+            `2. Conecta esta dirección de billetera\n` +
+            `3. Usa Retirar → Arbitrum para mover USDC a cualquier dirección\n\n` +
+            `_Retiros dentro del bot disponibles en v3.0._`,
+
+        export_key_title: `🔑 *Copia de Seguridad de Clave Privada*`,
+        export_key_warning:
+            `⚠️ *Advertencia de Seguridad*\n\n` +
+            `Tu clave privada otorga *acceso total* a tu billetera.\n` +
+            `*Nunca la compartas con nadie.*\n\n` +
+            `Toca el botón para revelarla. Se eliminará automáticamente en 60 segundos.`,
+        export_key_confirm: `[ Revelar Mi Clave Privada ]`,
+        export_key_value:
+            `🔑 *Tu Clave Privada*\n\n` +
+            `\`{{pk}}\`\n\n` +
+            `⚠️ Impórtala a MetaMask o cualquier billetera EVM.\n` +
+            `_Este mensaje se eliminará en 60 segundos._`,
     },
 
     // ── Chinese ────────────────────────────────────────────────────────────────
@@ -238,5 +322,32 @@ const MESSAGES = {
         stop_dashboard: `终端已停止。使用 /dashboard 重新启动。`,
         no_grid: `未找到活跃的网格会话。`,
         grid_cancelled: `🛑 *网格已停止*\n\n标的：*{{asset}}*\n\n_未成交订单需在 Hyperliquid 界面手动取消。_`,
+
+        btn_dashboard: `📊 实时终端`,
+        btn_withdraw: `💸 提款`,
+        btn_settings: `⚙️ 设置和密钥`,
+
+        withdraw_title: `💸 *提款*`,
+        withdraw_body:
+            `您的 AIGENT 钱包资金存放在 Arbitrum / Hyperliquid 上。\n\n` +
+            `*钱包地址：* \`{{wallet}}\`\n\n` +
+            `提款方法：\n` +
+            `1. 打开 [Hyperliquid 应用](https://app.hyperliquid.xyz)\n` +
+            `2. 连接上方钱包地址\n` +
+            `3. 使用提款 → Arbitrum 将 USDC 转至任意地址\n\n` +
+            `_机器人内提款功能将在 v3.0 版本上线。_`,
+
+        export_key_title: `🔑 *私钥备份*`,
+        export_key_warning:
+            `⚠️ *安全警告*\n\n` +
+            `私钥可完全控制您的钱包中的所有资产。\n` +
+            `*切勿与任何人共享。*\n\n` +
+            `点击下方按钮查看您的私钥。60 秒后将自动删除。`,
+        export_key_confirm: `[ 查看我的私钥 ]`,
+        export_key_value:
+            `🔑 *您的私钥*\n\n` +
+            `\`{{pk}}\`\n\n` +
+            `⚠️ 将其导入 MetaMask 或任何 EVM 钱包。\n` +
+            `_此消息将在 60 秒后自动删除。_`,
     },
 };
