@@ -1,6 +1,6 @@
 /**
  * AIGENT - Claude AI Intent Parser
- * Handles both simple trade intents and advanced strategy intents (grid, DCA, etc.)
+ * Handles simple trades, grid bot, and universal order (market/limit) intents.
  */
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -8,92 +8,81 @@ const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-/**
- * System prompt instructing Claude to parse both simple trades AND advanced strategies.
- * Returns ONLY valid JSON — no explanations, no markdown.
- */
 const SYSTEM_PROMPT = `You are a financial intent parser for a crypto trading agent called AIGENT.
-Your job is to extract structured trading parameters from natural language. You must understand multiple languages, especially Korean and English.
+Extract structured trading parameters from natural language. Understand Korean and English.
 
-You can parse TWO types of trading intents:
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-TYPE 1: Simple Trade
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-Fields to extract:
-- "strategy": "simple"
-- "action": "buy" or "sell"
-- "asset": crypto ticker (e.g. "BTC", "ETH", "SOL"). Translate: 비트코인→BTC, 이더리움→ETH, 솔라나→SOL
-- "amount": numeric USD value (e.g. 500)
-- "condition": trigger condition as a string (e.g. "price drops below $70,000", "immediately")
-
-Example input: "Buy $100 of ETH if it drops 5%"
-Example output: {"strategy":"simple","action":"buy","asset":"ETH","amount":100,"condition":"price drops 5%"}
-
-Example input (Korean): "500달러치 비트코인 7만불 아래로 떨어지면 매수해줘"
-Example output: {"strategy":"simple","action":"buy","asset":"BTC","amount":500,"condition":"price drops below $70000"}
+You parse THREE strategy types. Return ONLY valid JSON — no markdown or explanation.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-TYPE 2: Grid Bot Strategy
+TYPE 1: Simple Trade  (strategy: "simple")
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-Triggered when user mentions: grid, 그리드, range trading, 레인지, 구간 매매, grid bot, 그리드봇
-Fields to extract:
-- "strategy": "grid"
-- "asset": crypto ticker
-- "lower_price": lower bound of grid range (number, USD)
-- "upper_price": upper bound of grid range (number, USD)
-- "grid_count": number of grid levels (integer, default 10 if not specified)
-- "total_usdc": total USDC capital to deploy (number)
+Fields: strategy, action ("buy"/"sell"), asset, amount (USD number), condition (string)
+Example: "Buy $100 ETH if drops 5%" → {"strategy":"simple","action":"buy","asset":"ETH","amount":100,"condition":"price drops 5%"}
+Korean: "500달러치 비트코인 7만불 아래 매수" → {"strategy":"simple","action":"buy","asset":"BTC","amount":500,"condition":"price drops below $70000"}
 
-Example input: "Set up a grid on ETH between $2800 and $3200 with 20 grids using $1000"
-Example output: {"strategy":"grid","asset":"ETH","lower_price":2800,"upper_price":3200,"grid_count":20,"total_usdc":1000}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYPE 2: Grid Bot  (strategy: "grid")
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Triggered by: grid, 그리드, 그리드봇, range trading, 구간 매매
+Fields: strategy, asset, lower_price, upper_price, grid_count (default 10), total_usdc
+Example: "ETH grid 2800-3200 20 grids $1000" → {"strategy":"grid","asset":"ETH","lower_price":2800,"upper_price":3200,"grid_count":20,"total_usdc":1000}
+Korean: "이더 2800-3200 그리드봇 20개 1000달러" → {"strategy":"grid","asset":"ETH","lower_price":2800,"upper_price":3200,"grid_count":20,"total_usdc":1000}
 
-Example input (Korean): "이더리움 2800달러에서 3200달러 사이 그리드봇 20개 격자로 1000달러 운용해줘"
-Example output: {"strategy":"grid","asset":"ETH","lower_price":2800,"upper_price":3200,"grid_count":20,"total_usdc":1000}
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+TYPE 3: Universal Order  (strategy: "order")
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+Triggered by: market order, limit order, 시장가, 지정가, leverage, 레버리지, 즉시 매수/매도, 배율, execute, 실행
+Fields:
+- strategy: "order"
+- asset: ticker (BTC, ETH, SOL, ARB, etc.)
+- action: "buy" or "sell"
+- type: "market" or "limit"
+- size_usd: USD notional amount (number)
+- leverage: leverage multiplier (number, default 1)
+- limit_px: limit price (number, only required when type = "limit")
 
-Example input (Korean): "BTC 6만에서 7만 사이 그리드 10개 500불"
-Example output: {"strategy":"grid","asset":"BTC","lower_price":60000,"upper_price":70000,"grid_count":10,"total_usdc":500}
+Example: "Market buy $500 ETH at 10x leverage"
+→ {"strategy":"order","asset":"ETH","action":"buy","type":"market","size_usd":500,"leverage":10}
+
+Example: "Limit sell $200 BTC at $95000, 5x"
+→ {"strategy":"order","asset":"BTC","action":"sell","type":"limit","size_usd":200,"leverage":5,"limit_px":95000}
+
+Korean: "ETH 500달러치 10배 레버리지로 시장가 매수"
+→ {"strategy":"order","asset":"ETH","action":"buy","type":"market","size_usd":500,"leverage":10}
+
+Korean: "BTC 200달러 5배 레버리지 9만5천불 지정가 매도"
+→ {"strategy":"order","asset":"BTC","action":"sell","type":"limit","size_usd":200,"leverage":5,"limit_px":95000}
+
+Korean: "솔라나 즉시 매수 300달러"
+→ {"strategy":"order","asset":"SOL","action":"buy","type":"market","size_usd":300,"leverage":1}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 RULES:
-- Return ONLY valid JSON. No markdown, no explanation, no code blocks.
-- If you cannot parse the intent, return: {"error": "Could not parse intent"}
-- Always include the "strategy" field in your response.
-- For grid intents, never include "action" or "condition" fields.
-- For simple trade intents, never include grid fields.`;
+- Return ONLY valid JSON. No markdown, no explanations.
+- Always include the "strategy" field.
+- If you cannot parse: {"error": "Could not parse intent"}
+- Translate: 비트코인→BTC, 이더리움/이더→ETH, 솔라나→SOL, 아비트럼→ARB`;
 
-/**
- * Parses natural language text into a structured trading intent JSON.
- * @param {string} userMessage - The raw user message from Telegram.
- * @returns {Promise<Object>} - Parsed intent object or an error object.
- */
 export async function parseIntent(userMessage) {
     try {
         const message = await client.messages.create({
             model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-5',
             max_tokens: 512,
             system: SYSTEM_PROMPT,
-            messages: [
-                { role: 'user', content: userMessage },
-            ],
+            messages: [{ role: 'user', content: userMessage }],
         });
 
         const raw = message.content[0].text.trim();
 
         try {
             return JSON.parse(raw);
-        } catch (parseErr) {
-            // Fallback: extract JSON from markdown or mixed text
-            console.log('[LLM] Parsing raw text failed, attempting regex extraction:', raw);
+        } catch {
             const match = raw.match(/\{[\s\S]*\}/);
-            if (match) {
-                return JSON.parse(match[0]);
-            } else {
-                return { error: 'Claude failed to return structured data. Raw output: ' + raw };
-            }
+            if (match) return JSON.parse(match[0]);
+            return { error: 'Claude returned unstructured output: ' + raw };
         }
     } catch (err) {
-        console.error('[LLM] Error parsing intent:', err.message || err);
-        return { error: 'Claude parsing failed. Please try again. Detail: ' + (err.message || 'Unknown error') };
+        console.error('[LLM] Error:', err.message || err);
+        return { error: 'Claude parsing failed: ' + (err.message || 'Unknown error') };
     }
 }

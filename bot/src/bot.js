@@ -1,7 +1,7 @@
 /**
  * AIGENT - Telegraf Bot
  * Handles incoming messages, routes to Claude AI, executes strategies.
- * Supports: /dashboard (live Bloomberg terminal), grid bot (Hyperliquid), simple trades.
+ * Supports: /dashboard, grid bot (Hyperliquid), universal order (market/limit), simple trades.
  */
 import { Telegraf } from 'telegraf';
 import { parseIntent } from './llm.js';
@@ -194,6 +194,41 @@ export function startBot() {
                         totalUsdc: result.stats.totalUsdc,
                         lowerPrice: result.stats.lowerPrice,
                         upperPrice: result.stats.upperPrice,
+                    });
+                } else {
+                    await ctx.reply(result.error, { parse_mode: 'Markdown' });
+                }
+
+                return;
+            }
+
+            // ── UNIVERSAL ORDER STRATEGY ──────────────────────────────────────
+            if (strategy === 'order') {
+                await ctx.telegram.deleteMessage(chatId, thinkingMsg.message_id).catch(() => { });
+
+                await ctx.reply(
+                    `*Intent Parsed:*\n\`\`\`json\n${JSON.stringify(intent, null, 2)}\n\`\`\`\n` +
+                    `_Executing ${intent.type || 'market'} order on Hyperliquid..._`,
+                    { parse_mode: 'Markdown' }
+                );
+
+                const { executeUniversalOrder } = await import('./strategies/order.js');
+                const result = await executeUniversalOrder(intent);
+
+                if (result.success) {
+                    await ctx.reply(result.summary, { parse_mode: 'Markdown' });
+
+                    // Auto-launch dashboard for the traded asset
+                    await ctx.reply(
+                        `_Launching ${result.details.asset}/USDC terminal..._`,
+                        { parse_mode: 'Markdown' }
+                    );
+                    await startDashboard(bot, chatId, {
+                        asset: result.details.asset,
+                        gridCount: 0,
+                        totalUsdc: result.details.sizeUsd,
+                        lowerPrice: 0,
+                        upperPrice: 0,
                     });
                 } else {
                     await ctx.reply(result.error, { parse_mode: 'Markdown' });
