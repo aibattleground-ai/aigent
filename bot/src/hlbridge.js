@@ -116,7 +116,36 @@ export async function depositToHyperliquid(privateKey, opts = {}) {
         };
     }
 
-    // Determine deposit amount (full balance if not specified)
+    // ── Step 1.5: Pre-flight ETH gas check ────────────────────────────────────
+    // Arbitrum txs are cheap (~0.0001 ETH per tx), but if the wallet has zero
+    // native ETH the transaction will hang forever. Fail fast with a clear message.
+    onProgress('⛽ Checking gas (ETH) balance...');
+
+    try {
+        const ethRaw = await Promise.race([
+            provider.getBalance(address),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('ETH balance check timeout')), 5_000)),
+        ]);
+        const ethBalance = Number(ethers.utils.formatEther(ethRaw));
+
+        // Need at least ~0.00015 ETH for 2 txs on Arbitrum (approve + deposit)
+        const MIN_GAS_ETH = 0.00015;
+        if (ethBalance < MIN_GAS_ETH) {
+            return {
+                success: false,
+                error:
+                    `❌ 가스비(ETH) 부족!\n\n` +
+                    `송금을 위한 네트워크 수수료가 없습니다.\n` +
+                    `귀하의 금고 주소로 소량의 *Arbitrum 기반 ETH (약 $1~2)*를 입금해 주세요.\n\n` +
+                    `_(현재 ETH 잔고: ${ethBalance.toFixed(6)} ETH)_`,
+            };
+        }
+    } catch (err) {
+        // ETH check itself failed — warn but don't block (node might be flaky)
+        console.warn('[HLBRIDGE] ETH balance check failed:', err.message);
+        onProgress('⚠️ Could not verify ETH gas — proceeding with caution...');
+    }
+
     const depositAmt = amountUsdc ? Math.min(amountUsdc, usdcBalance) : usdcBalance;
     const rawDepositAmt = ethers.BigNumber.from(
         Math.floor(depositAmt * 10 ** USDC_DECIMALS)
