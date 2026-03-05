@@ -22,7 +22,7 @@ import { ethers } from 'ethers';
 // ── Constants ──────────────────────────────────────────────────────────────────
 
 const USDC_ADDRESS = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
-const HL_BRIDGE_ADDRESS = '0x2Df1c51E09aECF9d8C4e3A049c9CE9E4E1b6A6a';
+const HL_BRIDGE_ADDRESS = ethers.utils.getAddress('0x2Df1c51E09aECF9d8C4e3A049c9CE9E4E1b6A6a');
 const USDC_DECIMALS = 6;
 const ARB_CHAIN_ID = 42161;        // Arbitrum One
 const MIN_DEPOSIT_USDC = 1.0;
@@ -179,21 +179,15 @@ async function getNonce(address) {
 }
 
 async function getGasPrice() {
-    // Try EIP-1559 first, fall back to legacy gasPrice
-    try {
-        const feeHex = await rpcCall({
-            jsonrpc: '2.0', id: 5, method: 'eth_maxPriorityFeePerGas', params: [],
-        });
-        // Use baseFee × 2 + priority as maxFeePerGas (safe buffer)
-        const priority = ethers.BigNumber.from(feeHex);
-        const base = priority.mul(2);  // conservative
-        return { maxFeePerGas: base.add(priority), maxPriorityFeePerGas: priority };
-    } catch {
-        const gasPriceHex = await rpcCall({
-            jsonrpc: '2.0', id: 5, method: 'eth_gasPrice', params: [],
-        });
-        return { gasPrice: ethers.BigNumber.from(gasPriceHex) };
-    }
+    // Arbitrum: eth_maxPriorityFeePerGas returns 0x00, so use eth_gasPrice + 20% buffer
+    const gasPriceHex = await rpcCall({
+        jsonrpc: '2.0', id: 5, method: 'eth_gasPrice', params: [],
+    });
+    const base = ethers.BigNumber.from(gasPriceHex);
+    if (base.isZero()) throw new Error('eth_gasPrice returned 0');
+    const buffered = base.mul(120).div(100); // +20% buffer
+    console.log('[HLBRIDGE] gasPrice (wei):', buffered.toString());
+    return { gasPrice: buffered };
 }
 
 // ── Offline Sign + axios broadcast ────────────────────────────────────────────
