@@ -10,6 +10,7 @@ import { startDashboard, killdDashboard, getActiveSessions } from './dashboard.j
 import { initDB, insertTrade, getTradesByChatId, generateSyncCode } from './db.js';
 import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivateKey } from './users.js';
 import { t, LANGUAGES } from './i18n.js';
+import { startDepositMonitor } from './deposit.js';
 
 // ── In-memory state ────────────────────────────────────────────────────────────
 const gridSessions = new Map();    // chatId → { asset, stats }
@@ -424,6 +425,8 @@ export async function startBot() {
             await bot.launch({ dropPendingUpdates: true });
             console.log('AIGENT multi-lang bot started.');
             await registerCommands(bot);
+            // Start 24/7 deposit monitor (silently skips if ARB_RPC_URL not set)
+            startDepositMonitor(bot).catch((e) => console.error('[DEPOSIT] Start error:', e.message));
         } catch (err) {
             if (err.response?.error_code === 409 && retries > 0) {
                 console.log(`Telegram 409 conflict — retrying in 10s... (${retries} left)`);

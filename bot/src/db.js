@@ -176,6 +176,15 @@ export function getAllTrades(limit = 100) {
   return getDB().prepare('SELECT * FROM trades ORDER BY id DESC LIMIT ?').all(limit);
 }
 
+/**
+ * Returns all user records (for deposit monitor wallet scanning).
+ * @returns {Array<{ telegram_id, lang, wallet_address, encrypted_pk, created_at }>}
+ */
+export function getAllUsers() {
+  return getDB().prepare('SELECT * FROM users WHERE wallet_address IS NOT NULL').all();
+}
+
+
 // ── Sync Code (Web Dashboard) ──────────────────────────────────────────────────
 
 /** Generates and stores a 6-char sync code for the web dashboard link flow. */
