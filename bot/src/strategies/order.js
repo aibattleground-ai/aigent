@@ -52,25 +52,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const round = (n, d) => parseFloat(n.toFixed(d));
 
 /**
- * Initializes an authenticated Hyperliquid SDK instance from env vars.
- * Throws a descriptive error if keys are missing or malformed.
+ * Initializes an authenticated Hyperliquid SDK instance.
+ * Priority: userPrivateKey (per-user from DB) → HL_PRIVATE_KEY (.env fallback)
+ *
+ * @param {string} [userPrivateKey] - Optional per-user private key from DB
  */
-function initSDK() {
-    const privateKey = process.env.HL_PRIVATE_KEY;
-    const walletAddress = process.env.HL_WALLET_ADDRESS;
+function initSDK(userPrivateKey) {
+    const privateKey = userPrivateKey || process.env.HL_PRIVATE_KEY;
 
     if (!privateKey || privateKey === 'your_private_key_here') {
         throw new Error(
-            'HL_PRIVATE_KEY is not configured.\n' +
-            'Add your Hyperliquid wallet private key to the .env file:\n' +
-            'HL_PRIVATE_KEY=0x...'
-        );
-    }
-    if (!walletAddress || walletAddress === 'your_wallet_address_here') {
-        throw new Error(
-            'HL_WALLET_ADDRESS is not configured.\n' +
-            'Add your Hyperliquid wallet address to the .env file:\n' +
-            'HL_WALLET_ADDRESS=0x...'
+            'No private key available.\n' +
+            'Complete onboarding via /start, or set HL_PRIVATE_KEY in .env.'
         );
     }
 
@@ -78,13 +71,13 @@ function initSDK() {
     try {
         new ethers.Wallet(privateKey);
     } catch {
-        throw new Error('HL_PRIVATE_KEY is invalid. Ensure it starts with 0x and is a valid 32-byte hex string.');
+        throw new Error('Private key is invalid. Ensure it is a valid 32-byte hex string (0x...).');
     }
 
     const isTestnet = process.env.HL_TESTNET !== 'false';
     const sdk = new Hyperliquid(privateKey, isTestnet);
 
-    return { sdk, walletAddress, isTestnet };
+    return { sdk, isTestnet };
 }
 
 /**
@@ -244,7 +237,7 @@ function classifyError(err, intent) {
  *   details: Object | null
  * }>}
  */
-export async function executeUniversalOrder(intentData) {
+export async function executeUniversalOrder(intentData, userPrivateKey = null) {
     // ── 1. Validate inputs ─────────────────────────────────────────────────
     const {
         asset,
@@ -290,7 +283,7 @@ export async function executeUniversalOrder(intentData) {
     // ── 2. Initialize SDK ──────────────────────────────────────────────────
     let sdk, isTestnet;
     try {
-        ({ sdk, isTestnet } = initSDK());
+        ({ sdk, isTestnet } = initSDK(userPrivateKey));
     } catch (err) {
         return { success: false, summary: null, error: classifyError(err, intentData), details: null };
     }

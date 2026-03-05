@@ -72,28 +72,27 @@ async function withRetry(fn, maxRetries = MAX_RETRIES, delayMs = RETRY_DELAY_MS)
 
 /**
  * Builds and returns an authenticated Hyperliquid SDK instance.
- * Private key is loaded exclusively from environment variables.
+ * Priority: userPrivateKey (per-user from DB) → HL_PRIVATE_KEY (.env)
  *
- * @returns {{ sdk: Hyperliquid, wallet: ethers.Wallet }}
+ * @param {string} [userPrivateKey] - Optional per-user private key from DB
+ * @returns {{ sdk: Hyperliquid, wallet: ethers.Wallet, isTestnet: boolean }}
  */
-function initHyperliquid() {
-    const privateKey = process.env.HL_PRIVATE_KEY;
-    const walletAddress = process.env.HL_WALLET_ADDRESS;
+function initHyperliquid(userPrivateKey) {
+    const privateKey = userPrivateKey || process.env.HL_PRIVATE_KEY;
 
-    if (!privateKey) {
-        throw new Error('HL_PRIVATE_KEY is not set in environment variables. Add it to your .env file.');
-    }
-    if (!walletAddress) {
-        throw new Error('HL_WALLET_ADDRESS is not set in environment variables. Add it to your .env file.');
+    if (!privateKey || privateKey === 'your_private_key_here') {
+        throw new Error(
+            'No private key available.\n' +
+            'Complete onboarding via /start, or set HL_PRIVATE_KEY in .env.'
+        );
     }
 
     // ethers.Wallet validates the private key format immediately
     const wallet = new ethers.Wallet(privateKey);
-
     const isTestnet = process.env.HL_TESTNET !== 'false'; // default = testnet for safety
     const sdk = new Hyperliquid(privateKey, isTestnet);
 
-    return { sdk, wallet, walletAddress, isTestnet };
+    return { sdk, wallet, walletAddress: wallet.address, isTestnet };
 }
 
 // ── Grid Calculation ──────────────────────────────────────────────────────────
@@ -243,7 +242,7 @@ async function placeLimitOrder(sdk, asset, side, price, size) {
  *   error: string | null
  * }>}
  */
-export async function runGridBot(intentData, chatId = 'unknown') {
+export async function runGridBot(intentData, chatId = 'unknown', userPrivateKey = null) {
     const { asset, lower_price, upper_price, grid_count, total_usdc } = intentData;
 
     // ── Input validation ──────────────────────────────────────────────────────
@@ -273,7 +272,7 @@ export async function runGridBot(intentData, chatId = 'unknown') {
     // ── Initialize SDK ────────────────────────────────────────────────────────
     let sdk, isTestnet;
     try {
-        ({ sdk, isTestnet } = initHyperliquid());
+        ({ sdk, isTestnet } = initHyperliquid(userPrivateKey));
     } catch (err) {
         return {
             success: false,
