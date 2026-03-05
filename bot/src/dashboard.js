@@ -71,10 +71,11 @@ async function getFastProvider(isTestnet) {
 }
 
 /**
- * Fetches live USDC balance from Arbitrum One via ethers.js balanceOf.
- * - Always hardcodes the official Arbitrum Native USDC contract
- * - 3s hard timeout
- * - On ANY failure: returns '$0.00 (RPC Error)' — never 'Fetching...'
+ * Fetches USDC balance via direct JSON-RPC eth_call (axios POST).
+ *
+ * Why axios over ethers.js Provider?
+ *   Free RPC nodes (Ankr, LlamaRPC etc.) block Node.js ethers.js requests
+ *   via Cloudflare/WAF. A direct POST with browser-like headers bypasses this.
  *
  * @param {string} walletAddress
  * @returns {Promise<string>}  e.g. '$1,234.56' or '$0.00 (RPC Error)'
@@ -82,40 +83,69 @@ async function getFastProvider(isTestnet) {
 async function getArbUsdcBalance(walletAddress) {
     if (!walletAddress) return '$0.00 (No Wallet)';
 
-    // ALWAYS use Arbitrum One mainnet USDC — never testnet address
-    const USDC_ARB_MAINNET = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
-    const ABI = ['function balanceOf(address) view returns (uint256)'];
+    // Arbitrum Native USDC — hardcoded, never changes
+    const USDC_CONTRACT = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
 
-    // Three reliable RPCs in priority order — 1rpc.io and llamarpc are rate-limit tolerant
+    // balanceOf(address) = 0x70a08231 + address zero-padded to 32 bytes (64 hex chars)
+    const paddedAddr = walletAddress.replace('0x', '').toLowerCase().padStart(64, '0');
+    const callData = `0x70a08231${paddedAddr}`;
+
+    // Browser-like headers to bypass Cloudflare WAF that blocks bot User-Agents
+    const HEADERS = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/plain, */*',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Origin': 'https://arbiscan.io',
+        'Referer': 'https://arbiscan.io/',
+    };
+
+    const PAYLOAD = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_call',
+        params: [{ to: USDC_CONTRACT, data: callData }, 'latest'],
+    };
+
+    // RPC endpoints in priority order — Alchemy demo first (most reliable)
     const RPCS = [
-        'https://1rpc.io/arb',               // 1RPC — privacy-focused, no rate-limit for free
-        'https://arbitrum.llamarpc.com',      // LlamaRPC — generous free tier
-        'https://arb1.arbitrum.io/rpc',       // Official Arbitrum (strict rate-limit fallback)
+        'https://arb-mainnet.g.alchemy.com/v2/demo',
+        'https://1rpc.io/arb',
+        'https://arbitrum.llamarpc.com',
+        'https://arb1.arbitrum.io/rpc',
     ];
 
-    try {
-        const balance = await Promise.race([
-            // Race all 3 RPC providers simultaneously
-            ...RPCS.map(async (url) => {
-                const provider = new ethers.providers.JsonRpcProvider(url);
-                const contract = new ethers.Contract(USDC_ARB_MAINNET, ABI, provider);
-                const raw = await contract.balanceOf(walletAddress);
-                const amount = Number(raw) / 1e6;  // USDC = 6 decimals
-                if (isNaN(amount)) throw new Error('invalid response');
-                return amount;
-            }),
-            // Hard 3s deadline — no more infinite loading
-            new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('3s timeout')), 3_000)
-            ),
-        ]);
+    // Dynamic import axios (ESM-compatible)
+    const { default: axios } = await import('axios');
 
-        return `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    } catch (err) {
-        console.warn('[DASHBOARD] ARB USDC balance error:', err.message);
-        return '$0.00 (RPC Error)';
+    for (const rpc of RPCS) {
+        try {
+            const response = await axios.post(rpc, PAYLOAD, {
+                headers: HEADERS,
+                timeout: 4000,
+            });
+
+            const hex = response.data?.result;
+            if (!hex || hex === '0x' || hex === '0x0') {
+                // Valid response but zero balance
+                return '$0.00';
+            }
+
+            // Decode: USDC has 6 decimals
+            const raw = BigInt(hex);
+            const balance = Number(raw) / 1e6;
+            return `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        } catch (err) {
+            console.error(`🔥 잔고조회 상세 에러 [${rpc}]:`, err.response?.data || err.message);
+            // Try next RPC
+        }
     }
+
+    // All RPCs failed
+    console.error('🔥 모든 RPC 실패 — 잔고 조회 불가');
+    return '$0.00 (RPC Error)';
 }
+
 
 /**
  * Fetches HL clearinghouse state in ONE call — returns both balance AND real PnL.
