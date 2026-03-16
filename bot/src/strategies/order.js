@@ -38,7 +38,6 @@ import { Hyperliquid } from 'hyperliquid';
 import { ethers } from 'ethers';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
-const MARKET_SLIPPAGE = 0.005;   // 0.5% slippage for market order emulation
 const MAX_LEVERAGE = 50;
 const MIN_SIZE_USD = 10;      // Hyperliquid minimum notional
 const PRICE_DECIMALS = 2;
@@ -46,10 +45,62 @@ const SIZE_DECIMALS = 5;
 const RETRY_ATTEMPTS = 3;
 const RETRY_DELAY_MS = 1500;
 
+// ── Dynamic Slippage Calculator ────────────────────────────────────────────────
+//
+//  슬리피지 = 자산 변동성 기본값 × 레벨 배율
+//
+//  TIER 1 — 저변동 (BTC, ETH 등 대형주):   base = 0.10%
+//  TIER 2 — 중변동 (SOL, BNB, AVAX 등):    base = 0.25%
+//  TIER 3 — 고변동 (알트, 밈코인 등):       base = 0.50%
+//
+//  Level multiplier (카피트레이딩 레벨 기준):
+//   Lv1: ×0.8  (저레버 BTC/ETH → 슬리피지 최소화)
+//   Lv2: ×1.0
+//   Lv3: ×1.3
+//   Lv4: ×1.7
+//   Lv5: ×2.2  (풀악셀 알트 → 더 넓은 슬리피지 허용)
+//
+//  최대값은 env COPY_SLIPPAGE_MAX (기본 2.0%) 로 캡
+
+const SLIPPAGE_TIER = {
+    1: new Set(['BTC', 'ETH', 'WBTC', 'WETH']),
+    2: new Set(['SOL', 'BNB', 'AVAX', 'ARB', 'OP', 'MATIC', 'LINK', 'UNI', 'AAVE', 'LTC', 'DOT', 'ADA']),
+    // Everything else → tier 3 (high-vol alts / memecoins)
+};
+
+const TIER_BASE_SLIPPAGE = { 1: 0.001, 2: 0.0025, 3: 0.005 };
+const LEVEL_MULTIPLIER = { 1: 0.8, 2: 1.0, 3: 1.3, 4: 1.7, 5: 2.2 };
+
+/**
+ * Returns the IOC slippage fraction for a given asset + copy-trading level.
+ * @param {string} asset  - e.g. "BTC", "DOGE"
+ * @param {number} level  - 1~5 copy trading level (optional, defaults to mid)
+ * @returns {number}      - slippage as a decimal, e.g. 0.003 = 0.3%
+ */
+export function calcSlippage(asset, level = 3) {
+    const assetUpper = String(asset).toUpperCase().trim();
+
+    const tier = SLIPPAGE_TIER[1].has(assetUpper) ? 1
+        : SLIPPAGE_TIER[2].has(assetUpper) ? 2
+            : 3;
+
+    const base = TIER_BASE_SLIPPAGE[tier];
+    const multiplier = LEVEL_MULTIPLIER[level] ?? 1.3;
+    const raw = base * multiplier;
+
+    // Cap via env var (default 2.0%)
+    const maxSlippage = parseFloat(process.env.COPY_SLIPPAGE_MAX ?? '0.02');
+    const slippage = Math.min(raw, maxSlippage);
+
+    console.log(`[SLIPPAGE] ${assetUpper} | tier=${tier} | lv=${level} | base=${(base * 100).toFixed(2)}% × ${multiplier} = ${(slippage * 100).toFixed(3)}%`);
+    return slippage;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const round = (n, d) => parseFloat(n.toFixed(d));
+
 
 /**
  * Initializes an authenticated Hyperliquid SDK instance.
@@ -319,10 +370,12 @@ export async function executeUniversalOrder(intentData, userPrivateKey = null) {
     let orderType;
 
     if (typeLower === 'market') {
-        // IOC emulation: aggressive limit with slippage buffer
+        // IOC emulation: aggressive limit with DYNAMIC slippage buffer
+        // Slippage is calculated based on asset volatility tier + copy level
+        const slippage = calcSlippage(assetUpper, intentData.level ?? 3);
         orderPrice = isBuy
-            ? round(markPrice * (1 + MARKET_SLIPPAGE), PRICE_DECIMALS)
-            : round(markPrice * (1 - MARKET_SLIPPAGE), PRICE_DECIMALS);
+            ? round(markPrice * (1 + slippage), PRICE_DECIMALS)
+            : round(markPrice * (1 - slippage), PRICE_DECIMALS);
         orderType = { limit: { tif: 'Ioc' } };   // Immediate-Or-Cancel
     } else {
         // Standard GTC limit order

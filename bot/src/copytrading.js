@@ -139,29 +139,40 @@ async function notify(bot, chatId, text) {
  * Mirrors a new position opening from the tracked trader.
  * @param {object} params
  */
-async function mirrorOpen({ chatId, coin, szi, leverage, privKey, traderName, bot }) {
+async function mirrorOpen({ chatId, coin, szi, leverage, level, privKey, traderName, bot }) {
     const isBuy = szi > 0;
     const action = isBuy ? 'buy' : 'sell';
-    const dir = isBuy ? 'Long' : 'Short';
+    const dir = isBuy ? '📈 Long' : '📉 Short';
+    const emoji = isBuy ? '🟢' : '🔴';
 
-    console.log(`[COPY] mirrorOpen → ${action} ${coin} | lev=${leverage}x | chatId=${chatId}`);
+    console.log(`[COPY] mirrorOpen → ${action} ${coin} | lev=${leverage}x | lv=${level} | chatId=${chatId}`);
 
     const result = await executeUniversalOrder(
-        { asset: coin, action, type: 'market', size_usd: COPY_SIZE_USD, leverage },
+        { asset: coin, action, type: 'market', size_usd: COPY_SIZE_USD, leverage, level },
         privKey
     );
 
     if (result.success) {
+        const d = result.details ?? {};
+        const fillPx = d.orderPrice ? `$${d.orderPrice.toLocaleString()}` : '—';
+        const markPx = d.markPrice ? `$${d.markPrice.toLocaleString()}` : '—';
+        const notional = d.notional ? `$${d.notional.toFixed(2)}` : `$${COPY_SIZE_USD}`;
         await notify(bot, chatId,
-            `✅ *[${traderName}] 따라하기 완료*\n\n` +
-            `📌 \`${coin}\` *${dir}* ${leverage}x 진입\n` +
-            `💵 미러 사이즈: $${COPY_SIZE_USD} | 레버리지: ${leverage}x\n\n` +
-            `_주문 ID: ${result.details?.orderId ?? 'N/A'}_`
+            `${emoji} *[${traderName}] 진입 미러 완료*\n` +
+            `\`\`\`\n` +
+            `COIN    : ${coin}\n` +
+            `DIR     : ${isBuy ? 'LONG' : 'SHORT'} ${leverage}x\n` +
+            `MARK    : ${markPx}\n` +
+            `FILL    : ${fillPx}\n` +
+            `SIZE    : ${notional} USD\n` +
+            `OID     : ${d.orderId ?? 'N/A'}\n` +
+            `\`\`\`\n` +
+            `_포지션 변화 발생 시 자동 청산 미러링._`
         );
     } else {
         await notify(bot, chatId,
             `⚠️ *[${traderName}] 미러 주문 실패*\n\n` +
-            `코인: ${coin} ${dir}\n` +
+            `📌 \`${coin}\` ${dir}\n` +
             `오류: ${result.error}`
         );
     }
@@ -172,29 +183,43 @@ async function mirrorOpen({ chatId, coin, szi, leverage, privKey, traderName, bo
  * Mirrors a position close (reduce-only market order).
  * @param {object} params
  */
-async function mirrorClose({ chatId, coin, szi, leverage, privKey, traderName, bot }) {
+async function mirrorClose({ chatId, coin, szi, leverage, level, entryPx, privKey, traderName, bot }) {
     // To close: reverse the direction
     const wasLong = szi > 0;
     const closeAction = wasLong ? 'sell' : 'buy';
-    const dir = wasLong ? 'Long' : 'Short';
+    const dir = wasLong ? 'LONG' : 'SHORT';
 
-    console.log(`[COPY] mirrorClose → ${closeAction} ${coin} | chatId=${chatId}`);
+    console.log(`[COPY] mirrorClose → ${closeAction} ${coin} | lv=${level} | chatId=${chatId}`);
 
     const result = await executeUniversalOrder(
-        { asset: coin, action: closeAction, type: 'market', size_usd: COPY_SIZE_USD, leverage },
+        { asset: coin, action: closeAction, type: 'market', size_usd: COPY_SIZE_USD, leverage, level },
         privKey
     );
 
     if (result.success) {
+        const d = result.details ?? {};
+        // Realized PnL estimate: (fillPx - entryPx) / entryPx × size_usd × leverage × direction
+        let pnlStr = '—';
+        if (entryPx && d.orderPrice) {
+            const pct = ((d.orderPrice - entryPx) / entryPx) * (wasLong ? 1 : -1) * leverage * 100;
+            const usd = pct / 100 * COPY_SIZE_USD;
+            pnlStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}% (${usd >= 0 ? '+' : ''}$${usd.toFixed(2)})`;
+        }
         await notify(bot, chatId,
-            `🔴 *[${traderName}] 청산 감지 → 자동 청산*\n\n` +
-            `📌 \`${coin}\` *${dir}* 포지션 종료\n` +
-            `_트레이더가 포지션을 닫았습니다._`
+            `🏁 *[${traderName}] 청산 미러 완료*\n` +
+            `\`\`\`\n` +
+            `COIN    : ${coin}\n` +
+            `DIR     : ${dir} 종료\n` +
+            `ENTRY   : ${entryPx ? '$' + entryPx.toLocaleString() : '—'}\n` +
+            `EXIT    : $${d.orderPrice?.toLocaleString() ?? '—'}\n` +
+            `PnL     : ${pnlStr}\n` +
+            `\`\`\`\n` +
+            `_트레이더가 포지션을 닫아 자동 청산 완료._`
         );
     } else {
         await notify(bot, chatId,
             `⚠️ *[${traderName}] 청산 미러 실패*\n\n` +
-            `코인: ${coin} ${dir}\n` +
+            `📌 \`${coin}\` ${dir}\n` +
             `오류: ${result.error}`
         );
     }
@@ -238,11 +263,11 @@ async function trackOnce(session) {
     for (const [coin, cur] of Object.entries(currentPositions)) {
         if (!prev[coin]) {
             // Brand new coin appeared → mirror open
-            await mirrorOpen({ chatId, coin, szi: cur.szi, leverage, privKey, traderName, bot });
+            await mirrorOpen({ chatId, coin, szi: cur.szi, leverage, level: session.level, privKey, traderName, bot });
         } else if (Math.sign(cur.szi) !== Math.sign(prev[coin].szi)) {
             // Direction flipped (e.g. long → short) → close old, open new
-            await mirrorClose({ chatId, coin, szi: prev[coin].szi, leverage, privKey, traderName, bot });
-            await mirrorOpen({ chatId, coin, szi: cur.szi, leverage, privKey, traderName, bot });
+            await mirrorClose({ chatId, coin, szi: prev[coin].szi, leverage, level: session.level, entryPx: prev[coin].entryPx, privKey, traderName, bot });
+            await mirrorOpen({ chatId, coin, szi: cur.szi, leverage, level: session.level, privKey, traderName, bot });
         }
         // Size change only → log, skip re-entry for now
     }
@@ -251,7 +276,7 @@ async function trackOnce(session) {
     for (const [coin, prevPos] of Object.entries(prev)) {
         if (!currentPositions[coin]) {
             // Coin disappeared → mirror close
-            await mirrorClose({ chatId, coin, szi: prevPos.szi, leverage, privKey, traderName, bot });
+            await mirrorClose({ chatId, coin, szi: prevPos.szi, leverage, level: session.level, entryPx: prevPos.entryPx, privKey, traderName, bot });
         }
     }
 

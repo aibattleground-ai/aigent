@@ -7,7 +7,10 @@ import { Telegraf } from 'telegraf';
 import { parseIntent } from './llm.js';
 import { executeMockTrade } from './executor.js';
 import { startDashboard, killdDashboard, getActiveSessions } from './dashboard.js';
-import { initDB, insertTrade, getTradesByChatId, generateSyncCode, getAllUsers } from './db.js';
+import {
+    initDB, insertTrade, getTradesByChatId, generateSyncCode, getAllUsers,
+    ensureReferralCode, applyReferralCode, getReferralStats
+} from './db.js';
 import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivateKey } from './users.js';
 import { t, LANGUAGES } from './i18n.js';
 import { startDepositMonitor } from './deposit.js';
@@ -112,6 +115,14 @@ export async function startBot() {
         const chatId = String(ctx.chat.id);
         const wallet = getUserWallet(chatId);
 
+        // Handle referral code passed as /start <code> (Telegram deep-link)
+        const payload = ctx.message?.text?.split(' ')[1];
+        if (payload && payload.length === 6) {
+            const result = applyReferralCode(chatId, payload);
+            if (result === 'ok') {
+                await ctx.reply('🎁 레퍼럴 코드 적용 완료! 초대한 친구의 실적에 감사드립니다 🙏', { parse_mode: 'Markdown' });
+            }
+        }
         if (!wallet) {
             // First launch — language picker first, then onboarding
             return ctx.reply(t('en', 'select_language'), {
@@ -731,6 +742,44 @@ export async function startBot() {
     bot.command('dashboard', handleDashboard);
     bot.hears(/^📊/, handleDashboard);                     // Korean: 📊 대시보드 / all langs
 
+    // ── /referral ─────────────────────────────────────────────────────────────
+    bot.command('referral', async (ctx) => {
+        const chatId = String(ctx.chat.id);
+        if (!await requireWallet(ctx)) return;
+
+        const code = ensureReferralCode(chatId);
+        const stats = getReferralStats(chatId);
+        const botUsername = ctx.botInfo?.username ?? 'aigent_bot';
+        const link = `https://t.me/${botUsername}?start=${code}`;
+
+        const recentList = stats.referees.slice(0, 5)
+            .map((r, i) => `  ${i + 1}. ID ${r.referee_chat_id.slice(-4)}•••  (${r.created_at.slice(0, 10)})`)
+            .join('\n') || '  아직 초대한 유저 없음';
+
+        await ctx.reply(
+            `👥 *나의 레퍼럴 현황*
+
+` +
+            `\`\`\`
+` +
+            `코드   : ${code}
+` +
+            `링크   : ${link}
+` +
+            `초대수 : ${stats.count}명
+` +
+            `\`\`\`
+
+` +
+            `*최근 초대 유저:*
+${recentList}
+
+` +
+            `_위 링크를 친구에게 공유하면 봇 진입 시 자동으로 연결됩니다._`,
+            { parse_mode: 'Markdown' }
+        );
+    });
+    bot.hears(/^👥/, async (ctx) => ctx.reply('/referral 을 입력해주세요.'));
     // ── /withdraw ─────────────────────────────────────────────────────────────
     const handleWithdraw = async (ctx) => {
         const chatId = String(ctx.chat.id);
