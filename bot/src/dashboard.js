@@ -126,7 +126,14 @@ async function warmAndScheduleArbBalance(session) {
  */
 async function getHlState(walletAddress) {
     const EMPTY = { balance: '$0.00', positions: [] };
-    if (!walletAddress) return EMPTY;
+
+    // ── Hard guard: reject obviously invalid addresses ────────────────────────
+    const PLACEHOLDERS = ['your_wallet_address_here', 'undefined', 'null', ''];
+    if (!walletAddress || PLACEHOLDERS.includes(String(walletAddress).toLowerCase().trim())) {
+        console.error(`[DASHBOARD] getHlState SKIPPED — walletAddress invalid: "${walletAddress}"`);
+        console.error(`[DASHBOARD] Tip: ensure HL_PRIVATE_KEY is set correctly in .env`);
+        return EMPTY;
+    }
 
     // ── EIP-55 체크섬 정규화 (소문자 주소 → HL API 422/wrong data 방지) ──
     let checksumAddr = walletAddress;

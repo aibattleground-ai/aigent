@@ -1387,11 +1387,15 @@ ${recentList}
     // ── Launch & register commands ─────────────────────────────────────────────
     const launch = async (retries = 10) => {
         try {
+            // Force-clear any lingering webhook / previous polling session on Telegram's side.
+            // This is the definitive fix for 409 Conflict on PM2 restart or crash recovery.
+            console.log('[BOT] Clearing Telegram webhook / pending updates...');
+            await bot.telegram.deleteWebhook({ drop_pending_updates: true }).catch(() => { });
+            console.log('[BOT] Webhook cleared. Launching polling...');
+
             await bot.launch({ dropPendingUpdates: true });
             console.log('AIGENT multi-lang bot started.');
             await registerCommands(bot);
-            // Deposit monitor DISABLED — was polling Arbitrum L1 RPC and causing 429 spam
-            // startDepositMonitor(bot).catch((e) => console.error('[DEPOSIT] Start error:', e.message));
         } catch (err) {
             if (err.response?.error_code === 409 && retries > 0) {
                 console.log(`Telegram 409 conflict — retrying in 10s... (${retries} left)`);
@@ -1403,6 +1407,7 @@ ${recentList}
     };
 
     await launch();
+
 
     // ── AUTO-RESUME: restore last μSCALP session after bot restart ─────────────
     // v7.2: On boot, scan HL API to detect the ACTUAL active ticker (e.g. DOGE)
