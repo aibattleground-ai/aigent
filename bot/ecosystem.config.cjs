@@ -18,11 +18,9 @@ module.exports = {
             // Entry point (ESM — Node runs src/index.js directly)
             script: 'src/index.js',
             interpreter: 'node',
-            interpreter_args: '--experimental-vm-modules',
 
-            // Runtime
-            cwd: __dirname,
-            watch: false,           // disable file-watch (use manual restart)
+            // ⚠️ MUST be fork — Telegram polling CANNOT run in multiple workers
+            exec_mode: 'fork',
             instances: 1,           // single instance (Telegram polling can't be multi)
 
             // Restart policy
