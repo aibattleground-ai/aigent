@@ -159,3 +159,36 @@ export function getUserPrivateKey(telegramId) {
     }
     return pk;
 }
+/**
+ * Returns the Hyperliquid trading wallet address.
+ *
+ * Priority:
+ *   1. HL_WALLET_ADDRESS from .env  (if set and looks like a real address)
+ *   2. Derived from HL_PRIVATE_KEY  (automatic — user never needs to set address manually)
+ *   3. null if neither is available
+ *
+ * @returns {string | null}
+ */
+export function getHlWalletAddress() {
+    const envAddr = process.env.HL_WALLET_ADDRESS ?? '';
+
+    // Check if it's a real address (starts with 0x and is 42 chars)
+    const looksValid = /^0x[0-9a-fA-F]{40}$/.test(envAddr.trim());
+    if (looksValid) return envAddr.trim();
+
+    // Derive from private key automatically
+    const pk = process.env.HL_PRIVATE_KEY ?? '';
+    if (!pk || pk === 'your_private_key_here' || pk.length < 10) {
+        console.warn('[USERS] HL_PRIVATE_KEY not set — cannot derive HL wallet address.');
+        return null;
+    }
+
+    try {
+        const wallet = new ethers.Wallet(pk);
+        console.log(`[USERS] HL wallet address derived from HL_PRIVATE_KEY: ${wallet.address}`);
+        return wallet.address;
+    } catch (e) {
+        console.error('[USERS] Failed to derive HL wallet address from HL_PRIVATE_KEY:', e.message);
+        return null;
+    }
+}

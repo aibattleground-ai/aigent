@@ -11,7 +11,7 @@ import {
     initDB, insertTrade, getTradesByChatId, generateSyncCode, getAllUsers,
     ensureReferralCode, applyReferralCode, getReferralStats
 } from './db.js';
-import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivateKey } from './users.js';
+import { onboardUser, updateLanguage, getUserLang, getUserWallet, getUserPrivateKey, getHlWalletAddress } from './users.js';
 import { t, LANGUAGES } from './i18n.js';
 import { startDepositMonitor } from './deposit.js';
 import { depositToHyperliquid } from './hlbridge.js';
@@ -730,9 +730,8 @@ export async function startBot() {
 
         await ctx.reply(`_Initializing${asset ? ` ${asset}/USDC` : ''} terminal..._`, { parse_mode: 'Markdown' });
 
-        // HL_WALLET_ADDRESS(.env) = 유저의 실제 HL 거래 계좌
-        // getUserWallet(chatId) = 봇 내부 생성 EVM 지갑 (다를 수 있음!)
-        const hlWallet = process.env.HL_WALLET_ADDRESS || getUserWallet(chatId);
+        // getHlWalletAddress() = HL_PRIVATE_KEY에서 자동 유도 (HL_WALLET_ADDRESS 플레이스홀더 무시)
+        const hlWallet = getHlWalletAddress() || getUserWallet(chatId);
 
         await startDashboard(bot, chatId, {
             asset,
@@ -1203,7 +1202,7 @@ ${recentList}
                         totalUsdc: result.stats.totalUsdc,
                         lowerPrice: result.stats.lowerPrice,
                         upperPrice: result.stats.upperPrice,
-                        walletAddress: process.env.HL_WALLET_ADDRESS || getUserWallet(chatId),
+                        walletAddress: getHlWalletAddress() || getUserWallet(chatId),
                     });
                 } else {
                     await ctx.reply(result.error, { parse_mode: 'Markdown' });
