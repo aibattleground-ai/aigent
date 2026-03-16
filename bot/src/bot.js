@@ -461,11 +461,13 @@ export async function startBot() {
                 `\uB808\uBC84\uB9AC\uC9C0: *${m.leverage}* | \uB9AC\uC2A4\uD06C: ${m.risk}\n` +
                 sourceTag + `\n\n` + lines;
 
-            // Cache for ct: callback
-            traders.forEach(tr => traderCache.set(tr.addr.slice(-8), { ...tr, levelMeta: m }));
+            // Cache for ct: callback (skip MOCK traders with null addr)
+            traders.filter(tr => tr.addr).forEach(tr => traderCache.set(tr.addr.slice(-8), { ...tr, levelMeta: m }));
 
             const copyBtns = traders.map((tr, i) => ([
-                { text: `\uD83C\uDFAF ${i + 1}\uC704 ${tr.name} \uCE74\uD53C`, callback_data: `ct:${tr.addr.slice(-8)}` },
+                tr.addr
+                    ? { text: `🎯 ${i + 1}위 ${tr.name} 카피`, callback_data: `ct:${tr.addr.slice(-8)}` }
+                    : { text: `🔒 ${i + 1}위 ${tr.name} (불가)`, callback_data: 'ct_mock' },
             ]));
 
             await ctx.editMessageText(text, {
